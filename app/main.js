@@ -15,6 +15,15 @@ let lastFiveDucksWhole = -1;
 
 const app = document.getElementById('app');
 
+// A cute yellow duck, not the mallard the 🦆 emoji renders as on most
+// platforms. One small PNG, reused everywhere at different sizes.
+function duckIcon(px = 18) {
+  return `<img src="./icons/duck-glyph.png" alt="" class="duck-ico" width="${px}" height="${px}">`;
+}
+function duckIcons(n, px = 16) {
+  return duckIcon(px).repeat(n);
+}
+
 // ---------- helpers ----------
 
 function fmtDue(due) {
@@ -138,7 +147,7 @@ function render() {
 function renderHeader() {
   const header = el(`
     <header class="hdr">
-      <div class="brand">🦆 Ducks</div>
+      <div class="brand">${duckIcon(24)} Ducks</div>
       <form id="quickAddForm" class="quickadd">
         <input id="quickAddInput" type="text" placeholder="What needs doing?" autocomplete="off">
         <button type="submit">Add</button>
@@ -172,8 +181,8 @@ function fiveDucksRow(fill) {
   const pct = Math.min(100, (fill / 5) * 100);
   return `
     <div class="ducks-row" title="${fill.toFixed(2)} of 5 ducks today">
-      <div class="ducks-row-base">🦆🦆🦆🦆🦆</div>
-      <div class="ducks-row-fill" style="width:${pct}%">🦆🦆🦆🦆🦆</div>
+      <div class="ducks-row-base">${duckIcons(5, 32)}</div>
+      <div class="ducks-row-fill" style="width:${pct}%">${duckIcons(5, 32)}</div>
     </div>
   `;
 }
@@ -184,7 +193,7 @@ function renderHome(tasks, settings, today) {
   const wrap = el(`
     <section class="tabpanel">
       ${fiveDucksRow(fill)}
-      ${fill >= 5 ? '<p class="parade">🦆🦆🦆 All five ducks in a row today! 🦆🦆🦆</p>' : ''}
+      ${fill >= 5 ? `<p class="parade">${duckIcons(3, 22)} All five ducks in a row today! ${duckIcons(3, 22)}</p>` : ''}
 
       <div class="slider-card">
         <label for="rankSlider">Deadline first
@@ -247,7 +256,7 @@ function taskCard(t, today = ducksDayDate()) {
       <div class="card-title">${esc(t.title)}</div>
       <div class="card-meta">
         ${t.due ? `<span class="chip due">${overdue ? 'was due' : 'due'} ${fmtDue(t.due)}</span>` : ''}
-        ${t.ducks ? `<span class="chip">${'🦆'.repeat(t.ducks)}</span>` : '<span class="chip muted">not rated</span>'}
+        ${t.ducks ? `<span class="chip">${duckIcons(t.ducks, 14)}</span>` : '<span class="chip muted">not rated</span>'}
         ${t.size ? `<span class="chip">${sizeLabel(t.size)}</span>` : ''}
         <span class="chip cat">${categoryLabel(t.category)}</span>
         ${t.doingSince ? '<span class="chip doing">doing now</span>' : ''}
@@ -295,7 +304,7 @@ function taskEditor(t) {
       </label>
       <div class="ducks-picker">
         Ducks:
-        ${[0, 1, 2, 3, 4, 5].map((n) => `<button data-action="setDucks" data-id="${t.id}" data-n="${n}" class="${t.ducks === n ? 'sel' : ''}">${n === 0 ? '0' : '🦆'.repeat(n)}</button>`).join('')}
+        ${[0, 1, 2, 3, 4, 5].map((n) => `<button data-action="setDucks" data-id="${t.id}" data-n="${n}" class="${t.ducks === n ? 'sel' : ''}">${n === 0 ? '0' : duckIcons(n, 15)}</button>`).join('')}
       </div>
       <button data-action="delete" data-id="${t.id}" class="danger">Delete this task</button>
     </div>
@@ -384,7 +393,7 @@ function renderList(tasks, settings, today) {
         <select id="fDucks">
           <option value="">All ducks</option>
           <option value="unrated" ${listFilters.ducks === 'unrated' ? 'selected' : ''}>Not rated yet</option>
-          ${[1, 2, 3, 4, 5].map((n) => `<option value="${n}" ${listFilters.ducks === String(n) ? 'selected' : ''}>${'🦆'.repeat(n)}</option>`).join('')}
+          ${[1, 2, 3, 4, 5].map((n) => `<option value="${n}" ${listFilters.ducks === String(n) ? 'selected' : ''}>${n} duck${n > 1 ? 's' : ''}</option>`).join('')}
         </select>
       </div>
       ${pastDue.length ? `<h3>Past due</h3><div class="cards">${pastDue.map((t) => taskCard(t, today)).join('')}</div>` : ''}
