@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ask Mom</title>
+<meta name="theme-color" content="#2e7d85">
+<style>
+  :root { --bg: #fbf9f4; --card: #fff; --text: #232323; --border: #e4ddcc; --accent: #2e7d85; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #14181a; --card: #1e2427; --text: #ece7db; --border: #313a3d; --accent: #5bb0b8; }
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    background: var(--bg); color: var(--text); margin: 0; padding: 24px 16px;
+    display: flex; justify-content: center;
+  }
+  .card { width: 100%; max-width: 420px; }
+  h1 { font-size: 1.4rem; margin-bottom: 4px; }
+  p.sub { color: #6b6b6b; margin-top: 0; }
+  label { display: block; margin-top: 14px; font-size: 0.9rem; }
+  input, textarea {
+    width: 100%; box-sizing: border-box; padding: 10px; font-size: 1rem; margin-top: 6px;
+    border-radius: 8px; border: 1px solid var(--border); background: var(--card); color: var(--text);
+  }
+  textarea { min-height: 90px; resize: vertical; }
+  button {
+    margin-top: 18px; padding: 12px 18px; font-size: 1rem; width: 100%;
+    border-radius: 10px; border: none; background: var(--accent); color: white; font-weight: 700;
+  }
+  #result { margin-top: 16px; font-size: 1.05rem; text-align: center; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1 id="heading">🦆 Ask Mom</h1>
+  <p class="sub">Type what you need. She'll see it in her Inbox.</p>
+
+  <form id="form">
+    <label>What do you need?
+      <textarea id="message" required></textarea>
+    </label>
+    <label>Needed by (optional)
+      <input id="neededBy" type="date">
+    </label>
+    <button type="submit">Send</button>
+  </form>
+  <div id="result"></div>
+</div>
+<script src="./kid.js"></script>
+</body>
+</html>
