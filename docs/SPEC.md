@@ -112,7 +112,13 @@ recorded.
   is only overwritten by an incoming edit that is newer for that specific
   field. A task synced before this existed has no `fieldUpdatedAt` yet;
   Code.gs falls back to the old whole-task-by-`updatedAt` merge for that one
-  record until its next edit gives it real per-field timestamps. Deleted
+  record until its next edit gives it real per-field timestamps. Waiting on
+  a real edit left old tasks exposed indefinitely, so this is also
+  self-healing (added 2026-09-29): `sync.js`'s pull runs every incoming task
+  through `backfillFieldUpdatedAt()` (`store.js`), which stamps a baseline
+  fieldUpdatedAt (that task's own `updatedAt`) onto any task missing one,
+  marks it dirty, and pushes it back within half a second, upgrading that
+  record to per-field merge without waiting for a human to touch it. Deleted
   tasks stay as tombstones with `deletedAt` (itself a merged field now) so
   they can't be resurrected by an older device. Events append deduped by
   id, separately from this merge. Server returns the full current task list

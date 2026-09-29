@@ -3,8 +3,8 @@
 
 import {
   getConn, getTasks, replaceAllTasks, getSettings, replaceSettings,
-  getDirtyTaskIds, clearDirtyTasks, isSettingsDirty, clearSettingsDirty,
-  getEventQueue, clearEventQueue
+  getDirtyTaskIds, clearDirtyTasks, markTaskDirty, isSettingsDirty, clearSettingsDirty,
+  getEventQueue, clearEventQueue, backfillFieldUpdatedAt
 } from './store.js';
 
 let pushTimer = null;
@@ -51,11 +51,27 @@ export async function syncNow() {
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || 'sync failed');
 
-    replaceAllTasks(data.tasks || []);
+    // Any task pulled down without fieldUpdatedAt predates per-field merge
+    // and is still exposed to the old whole-task-overwrite bug. Stamp a
+    // baseline now and re-mark it dirty so the fix pushes back up on its
+    // own, instead of waiting for that task to happen to get edited again.
+    const backfilledIds = [];
+    const incomingTasks = (data.tasks || []).map((t) => {
+      if (t.fieldUpdatedAt) return t;
+      backfilledIds.push(t.id);
+      return backfillFieldUpdatedAt(t);
+    });
+
+    replaceAllTasks(incomingTasks);
     if (data.settings) replaceSettings(data.settings);
     clearDirtyTasks(dirtyIds);
     if (settingsDirty) clearSettingsDirty();
     clearEventQueue(events.map((e) => e.id));
+
+    if (backfilledIds.length > 0) {
+      backfilledIds.forEach(markTaskDirty);
+      scheduleSync(500);
+    }
 
     announce_('ok');
     return { ok: true };

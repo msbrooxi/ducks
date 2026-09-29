@@ -167,6 +167,20 @@ export function touchTask(task, patch) {
   return Object.assign({}, task, patch, { updatedAt: ts, fieldUpdatedAt });
 }
 
+// A task synced before per-field merge existed has no fieldUpdatedAt, so it
+// still falls back to the old, buggier whole-task merge in Code.gs until it
+// gets one. Rather than waiting for that to happen to hit again, every pull
+// runs tasks through this: stamp a baseline (its own updatedAt, the best
+// guess available) for every field, so the very next push upgrades that
+// record on the server too and per-field merge takes over for good.
+export function backfillFieldUpdatedAt(task) {
+  if (task.fieldUpdatedAt) return task;
+  const ts = task.updatedAt || task.createdAt || nowIso();
+  const fieldUpdatedAt = {};
+  for (const f of CORE_FIELDS) fieldUpdatedAt[f] = ts;
+  return Object.assign({}, task, { fieldUpdatedAt });
+}
+
 // ---- settings ----
 
 export function getSettings() {
