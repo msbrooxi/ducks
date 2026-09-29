@@ -59,10 +59,15 @@ function mutateTask(id, patch, eventType, eventExtra) {
   render();
 }
 
-function addQuickTask(title) {
+function addQuickTask(title, { due, size, category } = {}) {
   const trimmed = title.trim();
   if (!trimmed) return;
-  const t = newTask({ title: trimmed });
+  const t = newTask({
+    title: trimmed,
+    due: due || null,
+    size: size || null,
+    category: category || 'admin'
+  });
   saveTask(t);
   logEvent('created', t.id);
   scheduleSync();
@@ -150,15 +155,32 @@ function renderHeader() {
       <div class="brand">${duckIcon(24)} Ducks</div>
       <form id="quickAddForm" class="quickadd">
         <input id="quickAddInput" type="text" placeholder="What needs doing?" autocomplete="off">
-        <button type="submit">Add</button>
+        <div class="quickadd-extra">
+          <select id="quickAddSize" title="Duration">
+            <option value="">Duration</option>
+            ${SIZES.map((s) => `<option value="${s.id}">${sizeLabel(s.id)}</option>`).join('')}
+          </select>
+          <input id="quickAddDue" type="date" title="Due date">
+          <select id="quickAddCategory" title="Category">
+            ${CATEGORIES.map((c) => `<option value="${c.id}" ${c.id === 'admin' ? 'selected' : ''}>${c.label}</option>`).join('')}
+          </select>
+          <button type="submit">Add</button>
+        </div>
       </form>
     </header>
   `);
   header.querySelector('#quickAddForm').addEventListener('submit', (e) => {
     e.preventDefault();
     const input = header.querySelector('#quickAddInput');
-    addQuickTask(input.value);
+    const due = header.querySelector('#quickAddDue');
+    const size = header.querySelector('#quickAddSize');
+    const category = header.querySelector('#quickAddCategory');
+    addQuickTask(input.value, { due: due.value, size: size.value, category: category.value });
     input.value = '';
+    due.value = '';
+    size.value = '';
+    category.value = 'admin';
+    input.focus();
   });
   return header;
 }
