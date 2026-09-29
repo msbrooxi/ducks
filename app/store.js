@@ -143,8 +143,14 @@ export function replaceAllTasks(list) {
 const CORE_FIELDS = [
   'title', 'notes', 'link', 'ducks', 'due', 'size', 'category',
   'status', 'doingSince', 'completedAt', 'deletedAt',
-  'recurrence', 'projectId', 'order', 'chip'
+  'recurrence', 'projectId', 'order', 'chip', 'dependsOn'
 ];
+// 'seq' (the human-friendly #1, #2, #3... reference number) is deliberately
+// NOT in this list. It's assigned once by the server (Code.gs) the first
+// time a task syncs, using a shared counter, and never touched again, so
+// two devices creating tasks offline can never hand out the same number.
+// Per-field merge would be the wrong tool for a value that's supposed to
+// be permanent and server-assigned rather than editable.
 
 export function newTask(overrides = {}) {
   const ts = nowIso();
@@ -167,7 +173,9 @@ export function newTask(overrides = {}) {
     recurrence: null,   // { freq: 'monthly'|'quarterly', day: 1..31 } | null
     projectId: null,    // set on a step: the id of its parent project task
     order: null,        // a step's position within its project
-    chip: null          // { nickname, color } | null; set on a project head
+    chip: null,         // { nickname, color } | null; set on a project head
+    dependsOn: [],       // ids of tasks that must be done before this one
+    seq: null           // assigned by the server on first sync, see above
   }, overrides);
   task.fieldUpdatedAt = {};
   for (const f of CORE_FIELDS) task.fieldUpdatedAt[f] = ts;

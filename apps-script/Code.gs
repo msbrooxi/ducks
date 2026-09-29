@@ -80,6 +80,22 @@ function handleSync_(body) {
     mergeTask_(store.tasks, incomingTasks[i]);
   }
 
+  // Assign the human-friendly #1, #2, #3... reference number here, on the
+  // server, to any task that doesn't have one yet. Doing it here (not on
+  // the device that creates the task) is what keeps two devices creating
+  // tasks offline from ever handing out the same number: whichever one
+  // reaches the server first gets the next number, the other gets the one
+  // after. Runs on every sync, including a plain pull, so a task backfilled
+  // by an old client (or restored some other way) still gets numbered.
+  if (!store.nextSeq) store.nextSeq = 0;
+  for (var taskId in store.tasks) {
+    var existingTask = store.tasks[taskId];
+    if (existingTask.seq == null) {
+      store.nextSeq += 1;
+      existingTask.seq = store.nextSeq;
+    }
+  }
+
   var incomingSettings = body.settings;
   if (incomingSettings && (!store.settings.updatedAt || incomingSettings.updatedAt > store.settings.updatedAt)) {
     store.settings = incomingSettings;
@@ -182,7 +198,7 @@ function handleKidSubmit_(body, kidName) {
   var coreFields = [
     'title', 'notes', 'link', 'ducks', 'due', 'size', 'category',
     'status', 'doingSince', 'completedAt', 'deletedAt',
-    'recurrence', 'projectId', 'order', 'chip'
+    'recurrence', 'projectId', 'order', 'chip', 'dependsOn'
   ];
   var fieldUpdatedAt = {};
   for (var i = 0; i < coreFields.length; i++) fieldUpdatedAt[coreFields[i]] = now;
@@ -207,6 +223,8 @@ function handleKidSubmit_(body, kidName) {
     projectId: null,
     order: null,
     chip: null,
+    dependsOn: [],
+    seq: null,
     fieldUpdatedAt: fieldUpdatedAt
   };
   store.tasks[id] = task;

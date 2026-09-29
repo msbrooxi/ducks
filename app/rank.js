@@ -35,10 +35,29 @@ function isQuickWin_(task, settings) {
   return !!task.size && (settings.quickWinSizes || ['S']).includes(task.size);
 }
 
+// A task with an unfinished pre-req is blocked: it stays visible in the
+// List tab (with a "blocked by" note) so it isn't invisible data, but it
+// never counts as something to do right now. A deleted pre-req no longer
+// blocks anything, there's nothing left to wait on.
+export function isBlocked(task, byId) {
+  if (!task.dependsOn || !task.dependsOn.length) return false;
+  return task.dependsOn.some((depId) => {
+    const dep = byId[depId];
+    return dep && !dep.deletedAt && dep.status !== 'done';
+  });
+}
+function byId_(tasks) {
+  const map = {};
+  for (const t of tasks) map[t.id] = t;
+  return map;
+}
+
 export function doNextList(tasks, settings, today = ducksDayDate()) {
+  const byId = byId_(tasks);
   // A project "head" task (has a chip) is a container, not something to do
-  // directly, so it never appears in Do Next; only its steps do.
-  const active = tasks.filter((t) => !t.deletedAt && t.status !== 'done' && !t.chip);
+  // directly, so it never appears in Do Next; only its steps do. A blocked
+  // task (an unfinished pre-req) doesn't count as something to do yet either.
+  const active = tasks.filter((t) => !t.deletedAt && t.status !== 'done' && !t.chip && !isBlocked(t, byId));
   const pastDue = active.filter((t) => isPastDue(t, today))
     .sort((a, b) => (a.due < b.due ? -1 : a.due > b.due ? 1 : 0));
 
@@ -77,7 +96,8 @@ export function doNextList(tasks, settings, today = ducksDayDate()) {
 }
 
 export function minutesFilter(tasks, minutes, settings) {
-  const active = tasks.filter((t) => !t.deletedAt && t.status !== 'done' && !t.chip);
+  const byId = byId_(tasks);
+  const active = tasks.filter((t) => !t.deletedAt && t.status !== 'done' && !t.chip && !isBlocked(t, byId));
   const sizeMinutes = settings.sizeMinutes || { S: 15, M: 30, L: 60 };
   const fits = active.filter((t) => t.size && sizeMinutes[t.size] != null && sizeMinutes[t.size] <= minutes);
   const hiddenUnsized = active.filter((t) => !t.size || t.size === 'XL').length;

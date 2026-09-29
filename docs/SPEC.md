@@ -65,6 +65,9 @@ chip          { nickname, color } | null   set only on a project "head"
               a project rather than an ordinary to-do
 recurrence    { freq: "monthly" | "quarterly", day: 1..31 } | null
               see Recurring tasks below
+dependsOn     [id, id, ...]   ids of tasks that must be done first; default []
+seq           number | null   permanent #1/#2/#3... reference number,
+              assigned by the server on first sync, see below
 ```
 ```
 waiting       { who, since, followUpBusinessDays } | null   Phase 2, not built
@@ -97,6 +100,34 @@ schedule. Two frequencies, chosen to match what Stephanie actually named
 Created from Settings > Recurring tasks. Missed recurring items behave
 like any other past-due task (pinned at top, Start/Snooze). "Stop
 repeating" clears `recurrence` without touching the task itself.
+
+### Reference numbers and dependencies (added 2026-09-29)
+Every task gets a permanent, human-friendly `seq` number (#1, #2, #3...),
+shown before its title everywhere. This is purely a reference for people,
+`id` (the uuid) is still the real key everything else uses internally,
+including `dependsOn` below.
+
+`seq` is deliberately **assigned by the server, not the device**: Code.gs's
+`handleSync_` gives the next number (from a `nextSeq` counter stored
+alongside the tasks) to any task that doesn't have one yet, on every sync,
+including a plain pull. If it were assigned client-side, two devices
+creating tasks while offline could hand out the same number; server-side
+assignment on first sync rules that out. `seq` is not in `CORE_FIELDS` and
+has no `fieldUpdatedAt` entry, it's set once and never edited.
+
+`dependsOn: [id, id, ...]` on a task names other tasks (by `id`, referenced
+in the UI by their `#seq`) that must be done first. `isBlocked(task, byId)`
+in `app/rank.js` is true when any pre-req exists, isn't deleted, and isn't
+done. A blocked task never appears in Do Next or "I have X minutes"
+(`rank.js` filters it out of `active` in both), but it still shows in the
+List tab with a "waiting on #N ..." chip naming the unmet pre-reqs, rather
+than disappearing outright, keeping with the "past data stays visible"
+principle elsewhere in this app. Picked from a multi-select in Details
+("Depends on"), which lists every other non-project task as `#seq Title`.
+No cycle detection beyond what's naturally impossible (a task can't depend
+on itself, the picker excludes it), so a longer dependency loop (A needs B
+needs C needs A) is possible to create by hand and isn't caught, worth
+building real cycle detection before this gets much more use.
 
 ### Settings (synced, has its own updatedAt)
 ```

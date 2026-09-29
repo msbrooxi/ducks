@@ -84,6 +84,8 @@ hr.day-sep { border: none; border-top: 1px solid var(--border); margin: 14px 0 0
 }
 .chip.due { background: #ffe3c2; color: #6b3d00; }
 .chip.doing { background: #d6ecff; color: #0a4a7a; }
+.chip.blocked { background: #f3d6d6; color: #7a1a1a; }
+.seq { color: var(--muted-text); font-weight: 400; font-size: 0.85em; }
 .chip.muted { color: var(--muted-text); }
 .card-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
 .card-actions button {

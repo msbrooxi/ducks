@@ -5,14 +5,14 @@ import {
   getProjectList, getSteps, projectProgress
 } from './store.js';
 import { scheduleSync, syncNow, onSyncStatus, startBackgroundSync, exportEventLog } from './sync.js';
-import { doNextList, minutesFilter, fiveDucksFill, sortForList, LIST_SORTS } from './rank.js';
+import { doNextList, minutesFilter, fiveDucksFill, sortForList, LIST_SORTS, isBlocked } from './rank.js';
 import { playQuack, playParade } from './quack.js';
 import { computeFirstDue, computeNextDue, FREQUENCIES, recurrenceLabel } from './recurrence.js';
 
 // Bumped by hand on every shipped change. Shown in Settings so it's a
 // one-glance way to tell whether a device is actually running the latest
 // build, instead of guessing from a stale cached copy.
-const APP_BUILD = '2026-09-29.4';
+const APP_BUILD = '2026-09-29.5';
 
 let activeTab = 'home';
 let expandedTaskId = null;
@@ -340,7 +340,7 @@ function taskCard(t, today = ducksDayDate()) {
   const overdue = isPastDue(t, today);
   return `
     <div class="card ${overdue ? 'overdue' : ''}" data-id="${t.id}">
-      <div class="card-title">${esc(t.title)}</div>
+      <div class="card-title">${t.seq != null ? `<span class="seq">#${t.seq}</span> ` : ''}${esc(t.title)}</div>
       <div class="card-meta">
         ${t.due ? `<span class="chip due">${overdue ? 'was due' : 'due'} ${fmtDue(t.due)}</span>` : ''}
         ${t.ducks ? `<span class="chip">${duckIcons(t.ducks, 14)}</span>` : '<span class="chip muted">not rated</span>'}
@@ -349,6 +349,7 @@ function taskCard(t, today = ducksDayDate()) {
         ${t.doingSince ? '<span class="chip doing">doing now</span>' : ''}
         ${t.recurrence ? `<span class="chip" title="${recurrenceLabel(t.recurrence)}">&#8635; repeats</span>` : ''}
         ${t.projectId ? projectChip_(t.projectId) : ''}
+        ${(() => { const b = blockedInfo_(t); return b ? `<span class="chip blocked">waiting on ${esc(b)}</span>` : ''; })()}
       </div>
       <div class="card-actions">
         <button data-action="complete" data-id="${t.id}">Done</button>
@@ -395,9 +396,29 @@ function taskEditor(t) {
         Ducks:
         ${[0, 1, 2, 3, 4, 5].map((n) => `<button data-action="setDucks" data-id="${t.id}" data-n="${n}" class="${t.ducks === n ? 'sel' : ''}">${n === 0 ? '0' : duckIcons(n, 15)}</button>`).join('')}
       </div>
+      <label>Depends on (must be done first)
+        <select data-field="dependsOn" data-id="${t.id}" multiple size="4">
+          ${getTaskList().filter((o) => o.id !== t.id && !o.chip).map((o) => (
+            `<option value="${o.id}" ${(t.dependsOn || []).includes(o.id) ? 'selected' : ''}>#${o.seq ?? '?'} ${esc(o.title)}</option>`
+          )).join('')}
+        </select>
+      </label>
+      <p class="hint">Ctrl/Cmd-click (or tap and drag on a phone) to pick more than one. Empty means no pre-reqs.</p>
       <button data-action="delete" data-id="${t.id}" class="danger">Delete this task</button>
     </div>
   `;
+}
+
+function blockedInfo_(t) {
+  if (!t.dependsOn || !t.dependsOn.length) return null;
+  const byId = {};
+  for (const x of getTaskList()) byId[x.id] = x;
+  if (!isBlocked(t, byId)) return null;
+  return t.dependsOn
+    .map((id) => byId[id])
+    .filter((dep) => dep && !dep.deletedAt && dep.status !== 'done')
+    .map((dep) => `#${dep.seq ?? '?'} ${dep.title}`)
+    .join(', ');
 }
 
 function bindCardActions(container) {
@@ -435,6 +456,9 @@ function attachGlobalDelegation() {
     const id = e.target.dataset.id;
     let value = e.target.value;
     if (field === 'due' && value === '') value = null;
+    if (field === 'dependsOn') {
+      value = Array.from(e.target.selectedOptions).map((opt) => opt.value);
+    }
     mutateTask(id, { [field]: value }, 'edited', { field, to: value });
   });
 }
