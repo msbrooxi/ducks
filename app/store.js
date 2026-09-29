@@ -12,6 +12,7 @@ const LS_CONN = 'ducks_conn'; // { url, key }
 export const CATEGORIES = [
   { id: 'admin', label: 'Admin' },
   { id: 'conversation', label: 'Conversation' },
+  { id: 'meetup', label: 'Meet-up' },
   { id: 'deep', label: 'Deep work' },
   { id: 'decision', label: 'Decision' },
   { id: 'errand', label: 'Errand' },

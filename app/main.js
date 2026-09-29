@@ -10,7 +10,7 @@ import { playQuack, playParade } from './quack.js';
 // Bumped by hand on every shipped change. Shown in Settings so it's a
 // one-glance way to tell whether a device is actually running the latest
 // build, instead of guessing from a stale cached copy.
-const APP_BUILD = '2026-09-29.1';
+const APP_BUILD = '2026-09-29.2';
 
 let activeTab = 'home';
 let expandedTaskId = null;

@@ -39,8 +39,9 @@ ducks         1..5 | null   null = "not rated yet"; ranks as 2 (revised 2026-09-
 due           "YYYY-MM-DD" | null
 size          "XS" | "S" | "M" | "L" | "XL" | null   null ranks/fills as L,
                                                      excluded from "I have X minutes"
-category      "admin" | "conversation" | "deep" | "decision" | "errand" | "money"
-              default "admin"
+category      "admin" | "conversation" | "meetup" | "deep" | "decision" |
+              "errand" | "money"   default "admin" ("meetup" added
+              2026-09-29: meetings, lunches, any scheduled get-together)
 status        "inbox" | "active" | "done"      (Phase 2 adds "waiting")
 doingSince    ISO | null   set by Start; cleared on done/snooze
 source        "me" | "angel" | "max" | "brie"
