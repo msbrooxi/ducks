@@ -37,8 +37,8 @@ notes         string?  optional
 link          string?  optional
 ducks         1..5 | null   null = "not rated yet"; ranks as 3
 due           "YYYY-MM-DD" | null
-size          "S" | "M" | "L" | "XL" | null   null ranks/fills as L,
-                                              excluded from "I have X minutes"
+size          "XS" | "S" | "M" | "L" | "XL" | null   null ranks/fills as L,
+                                                     excluded from "I have X minutes"
 category      "admin" | "conversation" | "deep" | "decision" | "errand" | "money"
               default "admin"
 status        "inbox" | "active" | "done"      (Phase 2 adds "waiting")
@@ -65,13 +65,22 @@ point at it. Project nickname and color live on the project task as
 ```
 rankSlider        0..100, default 50   (0 = deadline first, 100 = ducks first)
 dueSoonDays       3
-quickWinSizes     ["S"]
-sizeMinutes       { S: 15, M: 30, L: 60 }
-duckFillWeights   { S: 0.25, M: 0.5, L: 0.75, XL: 1 }
+quickWinSizes     ["XS"]
+sizeMinutes       { XS: 15, S: 30, M: 60, L: 180 }   (revised 2026-09-29; XL is
+                                                      open-ended 3+ hr, excluded
+                                                      from "I have X minutes"
+                                                      same as before)
+duckFillWeights   { XS: 0.15, S: 0.3, M: 0.5, L: 0.8, XL: 1 }   (revised 2026-09-29)
 dayStartHour      3
 muted             false   (per device, not synced)
 theme             "auto" | "light" | "dark"   (per device)
 ```
+`quickWinSizes`, `sizeMinutes`, and `duckFillWeights` have no Settings-screen
+control yet, only Deadline/Ducks slider and mute do. Until that UI exists,
+`store.js`'s `getSettings()` always overrides these three from the code
+defaults above regardless of what's stored, so an old saved value (e.g. from
+before the 2026-09-29 size revision) can't silently keep applying. Building
+real controls for these is still open work, not done.
 
 ### Event (append-only)
 ```

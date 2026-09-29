@@ -36,7 +36,7 @@ function categoryLabel(id) {
   return (CATEGORIES.find((c) => c.id === id) || {}).label || id;
 }
 function sizeLabel(id) {
-  return { S: 'Small', M: 'Medium', L: 'Large', XL: 'XL' }[id] || '';
+  return { XS: 'XS', S: 'Small', M: 'Medium', L: 'Large', XL: 'XL' }[id] || '';
 }
 function esc(s) {
   return (s ?? '').toString().replace(/[&<>"']/g, (c) => (
@@ -59,14 +59,15 @@ function mutateTask(id, patch, eventType, eventExtra) {
   render();
 }
 
-function addQuickTask(title, { due, size, category } = {}) {
+function addQuickTask(title, { due, size, category, ducks } = {}) {
   const trimmed = title.trim();
   if (!trimmed) return;
   const t = newTask({
     title: trimmed,
     due: due || null,
     size: size || null,
-    category: category || 'admin'
+    category: category || 'admin',
+    ducks: ducks ? Number(ducks) : null
   });
   saveTask(t);
   logEvent('created', t.id);
@@ -156,6 +157,10 @@ function renderHeader() {
       <form id="quickAddForm" class="quickadd">
         <input id="quickAddInput" type="text" placeholder="What needs doing?" autocomplete="off">
         <div class="quickadd-extra">
+          <select id="quickAddDucks" title="Ducks (importance)">
+            <option value="">Ducks</option>
+            ${[1, 2, 3, 4, 5].map((n) => `<option value="${n}">${n} duck${n > 1 ? 's' : ''}</option>`).join('')}
+          </select>
           <select id="quickAddSize" title="Duration">
             <option value="">Duration</option>
             ${SIZES.map((s) => `<option value="${s.id}">${sizeLabel(s.id)}</option>`).join('')}
@@ -175,11 +180,13 @@ function renderHeader() {
     const due = header.querySelector('#quickAddDue');
     const size = header.querySelector('#quickAddSize');
     const category = header.querySelector('#quickAddCategory');
-    addQuickTask(input.value, { due: due.value, size: size.value, category: category.value });
+    const ducks = header.querySelector('#quickAddDucks');
+    addQuickTask(input.value, { due: due.value, size: size.value, category: category.value, ducks: ducks.value });
     input.value = '';
     due.value = '';
     size.value = '';
     category.value = 'admin';
+    ducks.value = '';
     input.focus();
   });
   return header;

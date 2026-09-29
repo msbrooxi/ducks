@@ -18,19 +18,21 @@ export const CATEGORIES = [
   { id: 'money', label: 'Money and Filings' }
 ];
 
+// Revised 2026-09-29: added XS, shifted the other thresholds up a notch.
 export const SIZES = [
-  { id: 'S', label: 'Small (5-15 min)' },
-  { id: 'M', label: 'Medium (~30 min)' },
-  { id: 'L', label: 'Large (~1 hour)' },
-  { id: 'XL', label: 'XL (multi-session)' }
+  { id: 'XS', label: 'XS (under 15 min)' },
+  { id: 'S', label: 'S (under 30 min)' },
+  { id: 'M', label: 'M (under 1 hr)' },
+  { id: 'L', label: 'L (under 3 hr)' },
+  { id: 'XL', label: 'XL (3+ hr)' }
 ];
 
 const DEFAULT_SETTINGS = {
   rankSlider: 50,
   dueSoonDays: 3,
-  quickWinSizes: ['S'],
-  sizeMinutes: { S: 15, M: 30, L: 60 },
-  duckFillWeights: { S: 0.25, M: 0.5, L: 0.75, XL: 1 },
+  quickWinSizes: ['XS'],
+  sizeMinutes: { XS: 15, S: 30, M: 60, L: 180 },
+  duckFillWeights: { XS: 0.15, S: 0.3, M: 0.5, L: 0.8, XL: 1 },
   dayStartHour: 3,
   updatedAt: '1970-01-01T00:00:00.000Z'
 };
@@ -143,7 +145,17 @@ export function newTask(overrides = {}) {
 // ---- settings ----
 
 export function getSettings() {
-  return Object.assign({}, DEFAULT_SETTINGS, readJson_(LS_SETTINGS, {}));
+  const stored = readJson_(LS_SETTINGS, {});
+  // sizeMinutes/duckFillWeights/quickWinSizes have no Settings-screen control
+  // yet, so nothing has deliberately customized them. Always take the code
+  // defaults for these three, otherwise an earlier save (e.g. dragging the
+  // rank slider) would have quietly baked in the old size scheme forever,
+  // since Object.assign doesn't merge inside nested objects.
+  return Object.assign({}, DEFAULT_SETTINGS, stored, {
+    sizeMinutes: DEFAULT_SETTINGS.sizeMinutes,
+    duckFillWeights: DEFAULT_SETTINGS.duckFillWeights,
+    quickWinSizes: DEFAULT_SETTINGS.quickWinSizes
+  });
 }
 export function saveSettings(patch) {
   const settings = Object.assign(getSettings(), patch, { updatedAt: nowIso() });
