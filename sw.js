@@ -1,6 +1,6 @@
 // Minimal shell cache so the app opens instantly and still opens with no
 // signal. It never caches data from Apps Script, only the app's own files.
-const CACHE = 'ducks-shell-v13';
+const CACHE = 'ducks-shell-v14';
 const SHELL = [
   './', './index.html', './manifest.webmanifest',
   './app/styles.css', './app/main.js', './app/store.js', './app/sync.js',

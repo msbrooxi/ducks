@@ -12,7 +12,7 @@ import { computeFirstDue, computeNextDue, FREQUENCIES, recurrenceLabel } from '.
 // Bumped by hand on every shipped change. Shown in Settings so it's a
 // one-glance way to tell whether a device is actually running the latest
 // build, instead of guessing from a stale cached copy.
-const APP_BUILD = '2026-09-29.6';
+const APP_BUILD = '2026-09-29.7';
 
 let activeTab = 'home';
 let expandedTaskId = null;
@@ -509,9 +509,11 @@ function renderList(tasks, settings, today) {
     else rest = rest.filter((t) => t.ducks === Number(listFilters.ducks));
   }
   rest = sortForList(rest, listFilters.sort);
+  const fill = fiveDucksFill(tasks, settings, today);
 
   const wrap = el(`
     <section class="tabpanel">
+      ${fiveDucksRow(fill)}
       <h2>List</h2>
       <div class="filters">
         <select id="fSort">${LIST_SORTS.map((s) => `<option value="${s.id}" ${listFilters.sort === s.id ? 'selected' : ''}>Sort: ${s.label}</option>`).join('')}</select>

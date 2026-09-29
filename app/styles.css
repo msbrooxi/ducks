@@ -114,7 +114,16 @@ button.danger { color: var(--danger); border-color: var(--danger); background: t
    subtree, so a child's own "filter: none" can't cancel a parent's filter.
    That was the original bug (2026-09-29): both layers rendered equally
    grayed out and the fill never visibly appeared. */
-.ducks-row { position: relative; font-size: 1.8rem; line-height: 1; height: 2rem; }
+/* display: inline-block matters here, not cosmetic: without it this div
+   defaults to block and stretches to the full width of its container, so
+   the fill layer's width:NN% (a percentage of THIS element's width) ends
+   up measured against empty space to the right of the actual duck icons
+   instead of against the icons themselves. A small day's progress could
+   compute a real, nonzero fill percentage and still show basically no
+   visible color, which is likely why this looked like it wasn't working
+   even after the first fix (2026-09-29). inline-block shrinks this to the
+   icon row's own width, so the percentage means what it looks like it means. */
+.ducks-row { position: relative; display: inline-block; font-size: 1.8rem; line-height: 1; height: 2rem; }
 .ducks-row-base { filter: grayscale(1) opacity(0.35); }
 .ducks-row-fill { position: absolute; top: 0; left: 0; overflow: hidden; white-space: nowrap; }
 .parade { text-align: center; font-weight: 600; }

@@ -51,15 +51,17 @@ export async function syncNow() {
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || 'sync failed');
 
-    // Any task pulled down without fieldUpdatedAt predates per-field merge
-    // and is still exposed to the old whole-task-overwrite bug. Stamp a
-    // baseline now and re-mark it dirty so the fix pushes back up on its
-    // own, instead of waiting for that task to happen to get edited again.
+    // Any task pulled down missing a per-field timestamp for one or more
+    // fields (whole task, or just some fields, e.g. one rated for ducks
+    // before this existed but never touched on category) is still exposed
+    // to the old whole-task-overwrite bug for exactly those fields. Stamp
+    // a baseline now and re-mark it dirty so the fix pushes back up on its
+    // own, instead of waiting for that field to happen to get edited again.
     const backfilledIds = [];
     const incomingTasks = (data.tasks || []).map((t) => {
-      if (t.fieldUpdatedAt) return t;
-      backfilledIds.push(t.id);
-      return backfillFieldUpdatedAt(t);
+      const stamped = backfillFieldUpdatedAt(t);
+      if (stamped !== t) backfilledIds.push(t.id);
+      return stamped;
     });
 
     replaceAllTasks(incomingTasks);

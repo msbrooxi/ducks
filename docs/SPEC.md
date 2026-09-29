@@ -180,10 +180,14 @@ recorded.
   record until its next edit gives it real per-field timestamps. Waiting on
   a real edit left old tasks exposed indefinitely, so this is also
   self-healing (added 2026-09-29): `sync.js`'s pull runs every incoming task
-  through `backfillFieldUpdatedAt()` (`store.js`), which stamps a baseline
-  fieldUpdatedAt (that task's own `updatedAt`) onto any task missing one,
-  marks it dirty, and pushes it back within half a second, upgrading that
-  record to per-field merge without waiting for a human to touch it. Deleted
+  through `backfillFieldUpdatedAt()` (`store.js`), marks anything it touched
+  dirty, and pushes it back within half a second. Revised same day:
+  the first cut bailed out entirely if a task had fieldUpdatedAt for even
+  one field (e.g. a task rated for ducks during earlier troubleshooting,
+  before this function existed), leaving every OTHER field on that same
+  task, category included, still unprotected. It now fills in only
+  whichever fields are actually missing a timestamp, per field, not
+  per task. Deleted
   tasks stay as tombstones with `deletedAt` (itself a merged field now) so
   they can't be resurrected by an older device. Events append deduped by
   id, separately from this merge. Server returns the full current task list
@@ -218,6 +222,21 @@ recorded.
   unsized counting as L. Shown as 5 ducks filling in (partial fills allowed),
   capped at 5. Surprise fires once per day when it hits 5.
 - Reopening a task removes its fill.
+- Shown on both Home and List (added 2026-09-29, Stephanie wanted it on
+  both, not just Home).
+- Two real bugs here, both 2026-09-29: (1) the muted/colored overlay trick
+  put the grayscale filter on the shared parent `.ducks-row`, and a CSS
+  filter on a parent composites its whole subtree as one layer, so the
+  colored fill child's own `filter: none` could never cancel it out, both
+  layers rendered equally muted and the fill was invisible. Filter moved
+  onto the base layer alone. (2) `.ducks-row` had no explicit width, so as
+  a block element it stretched to the full width of its container; the
+  fill's `width: NN%` is a percentage of ITS OWN element's width, so that
+  percentage was being measured against mostly empty space to the right of
+  the actual icons rather than against the icons themselves, a small day's
+  progress could compute a real nonzero fill and still show near-zero
+  visible color. Fixed with `display: inline-block` so the row shrinks to
+  the icons' own width.
 
 ## Build order
 0. **Test first:** throwaway Apps Script + Pages page. Stephanie tests from
