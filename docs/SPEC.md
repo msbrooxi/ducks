@@ -45,6 +45,10 @@ status        "inbox" | "active" | "done"      (Phase 2 adds "waiting")
 doingSince    ISO | null   set by Start; cleared on done/snooze
 source        "me" | "angel" | "max" | "brie"
 createdAt, updatedAt, completedAt, deletedAt   ISO | null
+fieldUpdatedAt  { [field]: ISO }   added 2026-09-29, see Sync protocol below;
+                                   one timestamp per mergeable field, used
+                                   for per-field conflict resolution, not
+                                   shown anywhere in the UI
 ```
 Setting ducks to 0 in the UI offers to delete; 0 is never stored.
 
@@ -96,10 +100,22 @@ recorded.
   new events.
 - Save: debounced ~2 s after a change, POST `{ key, tasks: [changed], events:
   [new] }` to Apps Script.
-- Server takes a lock (LockService), merges **per task by `updatedAt`**
-  (newer wins; deleted tasks stay as tombstones with `deletedAt` so they
-  cannot be resurrected by an older device), appends events deduped by id,
-  writes, and returns the full current task list + settings.
+- Server takes a lock (LockService) and merges **per field, by each field's
+  own `fieldUpdatedAt` timestamp** (revised 2026-09-29; the original design
+  merged whole tasks by one `updatedAt`, which meant editing any field on a
+  device that hadn't yet pulled a newer edit to a *different* field on that
+  same task would silently overwrite it, e.g. rate ducks on the phone, then
+  change the category on the laptop before it had pulled, and the laptop's
+  stale `ducks` value would win). `touchTask()` in `store.js` stamps
+  `fieldUpdatedAt[field]` for exactly the fields a patch touches; a field
+  is only overwritten by an incoming edit that is newer for that specific
+  field. A task synced before this existed has no `fieldUpdatedAt` yet;
+  Code.gs falls back to the old whole-task-by-`updatedAt` merge for that one
+  record until its next edit gives it real per-field timestamps. Deleted
+  tasks stay as tombstones with `deletedAt` (itself a merged field now) so
+  they can't be resurrected by an older device. Events append deduped by
+  id, separately from this merge. Server returns the full current task list
+  + settings after merging.
 - Pull: on app open, on regaining focus, and every 60 s while visible.
 - Target latency phone to laptop: under a minute in normal use.
 

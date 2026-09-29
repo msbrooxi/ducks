@@ -1,5 +1,5 @@
 import {
-  getTaskList, getTask, saveTask, newTask, getSettings, saveSettings,
+  getTaskList, getTask, saveTask, newTask, touchTask, getSettings, saveSettings,
   getLocal, saveLocal, getConn, saveConn, isPastDue, ducksDayDate,
   logEvent, CATEGORIES, SIZES, nowIso, uuid
 } from './store.js';
@@ -52,7 +52,7 @@ function el(html) {
 function mutateTask(id, patch, eventType, eventExtra) {
   const t = getTask(id);
   if (!t) return;
-  const updated = Object.assign({}, t, patch, { updatedAt: nowIso() });
+  const updated = touchTask(t, patch);
   saveTask(updated);
   if (eventType) logEvent(eventType, id, eventExtra || {});
   scheduleSync();
@@ -438,19 +438,50 @@ function renderList(tasks, settings, today) {
   return wrap;
 }
 
+function addDaysToDateStr(dateStr, delta) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + delta);
+  return dt.toISOString().slice(0, 10);
+}
+function dayHeading(dateStr) {
+  const today = ducksDayDate();
+  if (dateStr === today) return 'Today';
+  if (dateStr === addDaysToDateStr(today, -1)) return 'Yesterday';
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return dt.toLocaleDateString('en-US', { timeZone: 'UTC', weekday: 'long', month: 'short', day: 'numeric' });
+}
+
 function renderDone(tasks) {
+  // Most recent first, grouped by the day it was completed. Nothing here
+  // ever gets purged, this is meant to be a durable record you can scroll
+  // back through, not just "today's done list".
   const done = tasks.filter((t) => t.status === 'done')
     .sort((a, b) => (b.completedAt || '').localeCompare(a.completedAt || ''));
+
+  let rows = '';
+  let lastDay = null;
+  for (const t of done) {
+    const day = ducksDayDate(new Date(t.completedAt));
+    if (day !== lastDay) {
+      if (lastDay !== null) rows += '<hr class="day-sep">';
+      rows += `<h3 class="day-heading">${dayHeading(day)}</h3>`;
+      lastDay = day;
+    }
+    rows += `
+      <div class="card" data-id="${t.id}">
+        <div class="card-title">${esc(t.title)}</div>
+        <div class="card-meta"><span class="chip">${new Date(t.completedAt).toLocaleString()}</span></div>
+        <div class="card-actions"><button data-action="reopen" data-id="${t.id}">Reopen</button></div>
+      </div>
+    `;
+  }
+
   return el(`
     <section class="tabpanel">
       <h2>Done</h2>
-      ${done.length ? done.map((t) => `
-        <div class="card" data-id="${t.id}">
-          <div class="card-title">${esc(t.title)}</div>
-          <div class="card-meta"><span class="chip">${new Date(t.completedAt).toLocaleString()}</span></div>
-          <div class="card-actions"><button data-action="reopen" data-id="${t.id}">Reopen</button></div>
-        </div>
-      `).join('') : '<p class="empty">Nothing checked off yet today. It\'ll fill in.</p>'}
+      ${done.length ? rows : '<p class="empty">Nothing checked off yet today. It\'ll fill in.</p>'}
     </section>
   `);
 }

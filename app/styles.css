@@ -64,6 +64,8 @@ body {
 .tabpanel { padding: 12px 14px 90px; flex: 1; }
 .tabpanel h2 { font-size: 1.05rem; margin: 18px 0 8px; }
 .tabpanel h3 { font-size: 0.9rem; margin: 14px 0 6px; color: var(--muted-text); }
+.day-heading { font-size: 0.85rem; margin: 16px 0 8px; color: var(--muted-text); font-weight: 700; }
+hr.day-sep { border: none; border-top: 1px solid var(--border); margin: 14px 0 0; }
 .empty { color: var(--muted-text); font-style: italic; }
 .hint { color: var(--muted-text); font-size: 0.85rem; }
 

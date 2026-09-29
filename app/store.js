@@ -121,9 +121,16 @@ export function replaceAllTasks(list) {
   writeJson_(LS_TASKS, tasks);
 }
 
+// Fields that get their own merge timestamp (see touchTask below). Keep this
+// in sync with apps-script/Code.gs's per-field merge.
+const CORE_FIELDS = [
+  'title', 'notes', 'link', 'ducks', 'due', 'size', 'category',
+  'status', 'doingSince', 'completedAt', 'deletedAt'
+];
+
 export function newTask(overrides = {}) {
   const ts = nowIso();
-  return Object.assign({
+  const task = Object.assign({
     id: uuid(),
     title: '',
     notes: null,
@@ -140,6 +147,23 @@ export function newTask(overrides = {}) {
     completedAt: null,
     deletedAt: null
   }, overrides);
+  task.fieldUpdatedAt = {};
+  for (const f of CORE_FIELDS) task.fieldUpdatedAt[f] = ts;
+  return task;
+}
+
+// Applies a patch to a task, bumping updatedAt and the per-field timestamp
+// for exactly the fields touched. Two devices editing different fields on
+// the same task (e.g. one rates ducks, the other changes the category)
+// then merge cleanly instead of one stale whole-task copy overwriting the
+// other's edit. Always use this instead of hand-rolling Object.assign.
+export function touchTask(task, patch) {
+  const ts = nowIso();
+  const fieldUpdatedAt = Object.assign({}, task.fieldUpdatedAt);
+  for (const key of Object.keys(patch)) {
+    fieldUpdatedAt[key] = ts;
+  }
+  return Object.assign({}, task, patch, { updatedAt: ts, fieldUpdatedAt });
 }
 
 // ---- settings ----

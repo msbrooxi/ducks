@@ -97,12 +97,49 @@ function handleSync_(body) {
   });
 }
 
+// Per-field merge (added 2026-09-29, replacing whole-task merge). The old
+// version replaced the entire task whenever incoming.updatedAt was newer,
+// which meant: rate ducks on the phone, then edit the category on the
+// laptop before the laptop had pulled that rating, and the laptop's stale
+// copy of "ducks" would overwrite the phone's newer rating even though the
+// laptop never touched that field. Merging field by field, using each
+// field's own timestamp, fixes that: a field only gets overwritten by an
+// edit that is actually newer for that specific field.
 function mergeTask_(tasksById, incoming) {
   if (!incoming || !incoming.id) return;
   var existing = tasksById[incoming.id];
-  if (!existing || !existing.updatedAt || incoming.updatedAt > existing.updatedAt) {
+  if (!existing) {
     tasksById[incoming.id] = incoming;
+    return;
   }
+
+  var incomingFU = incoming.fieldUpdatedAt;
+  var existingFU = existing.fieldUpdatedAt;
+
+  // A task synced before this fix has no fieldUpdatedAt on one side or the
+  // other. Fall back to the old whole-record behavior just for that one
+  // record rather than guessing.
+  if (!incomingFU || !existingFU) {
+    if (!existing.updatedAt || incoming.updatedAt > existing.updatedAt) {
+      tasksById[incoming.id] = incoming;
+    }
+    return;
+  }
+
+  var merged = Object.assign({}, existing);
+  var mergedFU = Object.assign({}, existingFU);
+  for (var field in incoming) {
+    if (field === 'id' || field === 'fieldUpdatedAt') continue;
+    var incomingTs = incomingFU[field];
+    var existingTs = existingFU[field];
+    if (incomingTs && (!existingTs || incomingTs > existingTs)) {
+      merged[field] = incoming[field];
+      mergedFU[field] = incomingTs;
+    }
+  }
+  merged.fieldUpdatedAt = mergedFU;
+  merged.updatedAt = incoming.updatedAt > existing.updatedAt ? incoming.updatedAt : existing.updatedAt;
+  tasksById[incoming.id] = merged;
 }
 
 function valuesOf_(obj) {
@@ -142,6 +179,13 @@ function handleKidSubmit_(body, kidName) {
   var id = Utilities.getUuid();
   var slug = kidName.toLowerCase();
 
+  var coreFields = [
+    'title', 'notes', 'link', 'ducks', 'due', 'size', 'category',
+    'status', 'doingSince', 'completedAt', 'deletedAt'
+  ];
+  var fieldUpdatedAt = {};
+  for (var i = 0; i < coreFields.length; i++) fieldUpdatedAt[coreFields[i]] = now;
+
   var task = {
     id: id,
     title: body.message || '(no message)',
@@ -157,7 +201,8 @@ function handleKidSubmit_(body, kidName) {
     createdAt: now,
     updatedAt: now,
     completedAt: null,
-    deletedAt: null
+    deletedAt: null,
+    fieldUpdatedAt: fieldUpdatedAt
   };
   store.tasks[id] = task;
   writeJsonFile_(DATA_FILE, store);
