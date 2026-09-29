@@ -107,6 +107,22 @@ export function getTasks() {
 export function getTaskList() {
   return Object.values(getTasks()).filter((t) => !t.deletedAt);
 }
+
+// ---- projects (a project is a task with a chip; steps point back at it) ----
+
+export function getProjectList() {
+  return getTaskList().filter((t) => t.chip && !t.projectId);
+}
+export function getSteps(projectId) {
+  return getTaskList()
+    .filter((t) => t.projectId === projectId)
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+}
+export function projectProgress(projectId) {
+  const steps = getSteps(projectId);
+  return { done: steps.filter((s) => s.status === 'done').length, total: steps.length };
+}
+
 export function getTask(id) {
   return getTasks()[id];
 }
@@ -126,7 +142,8 @@ export function replaceAllTasks(list) {
 // in sync with apps-script/Code.gs's per-field merge.
 const CORE_FIELDS = [
   'title', 'notes', 'link', 'ducks', 'due', 'size', 'category',
-  'status', 'doingSince', 'completedAt', 'deletedAt'
+  'status', 'doingSince', 'completedAt', 'deletedAt',
+  'recurrence', 'projectId', 'order', 'chip'
 ];
 
 export function newTask(overrides = {}) {
@@ -146,7 +163,11 @@ export function newTask(overrides = {}) {
     createdAt: ts,
     updatedAt: ts,
     completedAt: null,
-    deletedAt: null
+    deletedAt: null,
+    recurrence: null,   // { freq: 'monthly'|'quarterly', day: 1..31 } | null
+    projectId: null,    // set on a step: the id of its parent project task
+    order: null,        // a step's position within its project
+    chip: null          // { nickname, color } | null; set on a project head
   }, overrides);
   task.fieldUpdatedAt = {};
   for (const f of CORE_FIELDS) task.fieldUpdatedAt[f] = ts;

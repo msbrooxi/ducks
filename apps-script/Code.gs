@@ -181,7 +181,8 @@ function handleKidSubmit_(body, kidName) {
 
   var coreFields = [
     'title', 'notes', 'link', 'ducks', 'due', 'size', 'category',
-    'status', 'doingSince', 'completedAt', 'deletedAt'
+    'status', 'doingSince', 'completedAt', 'deletedAt',
+    'recurrence', 'projectId', 'order', 'chip'
   ];
   var fieldUpdatedAt = {};
   for (var i = 0; i < coreFields.length; i++) fieldUpdatedAt[coreFields[i]] = now;
@@ -202,6 +203,10 @@ function handleKidSubmit_(body, kidName) {
     updatedAt: now,
     completedAt: null,
     deletedAt: null,
+    recurrence: null,
+    projectId: null,
+    order: null,
+    chip: null,
     fieldUpdatedAt: fieldUpdatedAt
   };
   store.tasks[id] = task;

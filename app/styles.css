@@ -107,8 +107,14 @@ hr.day-sep { border: none; border-top: 1px solid var(--border); margin: 14px 0 0
 .ducks-picker button.sel { border-color: var(--accent); background: var(--chip-bg); }
 button.danger { color: var(--danger); border-color: var(--danger); background: transparent; }
 
-.ducks-row { position: relative; font-size: 1.8rem; line-height: 1; height: 2rem; filter: grayscale(1) opacity(0.35); }
-.ducks-row-fill { position: absolute; top: 0; left: 0; overflow: hidden; white-space: nowrap; filter: none; }
+/* The muted filter has to live on the base layer itself, not the shared
+   parent: a CSS filter on a container is composited over its whole
+   subtree, so a child's own "filter: none" can't cancel a parent's filter.
+   That was the original bug (2026-09-29): both layers rendered equally
+   grayed out and the fill never visibly appeared. */
+.ducks-row { position: relative; font-size: 1.8rem; line-height: 1; height: 2rem; }
+.ducks-row-base { filter: grayscale(1) opacity(0.35); }
+.ducks-row-fill { position: absolute; top: 0; left: 0; overflow: hidden; white-space: nowrap; }
 .parade { text-align: center; font-weight: 600; }
 
 .slider-card { margin: 14px 0; }
@@ -133,6 +139,45 @@ button.danger { color: var(--danger); border-color: var(--danger); background: t
 .kidlink code {
   display: block; background: var(--chip-bg); padding: 6px 8px; border-radius: 6px;
   font-size: 0.75rem; word-break: break-all; margin-bottom: 10px;
+}
+
+/* Projects */
+.project-dot {
+  display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+  margin-right: 4px; vertical-align: middle;
+}
+.project-chip {
+  color: white; border: none; font-weight: 600; cursor: pointer;
+}
+.color-picker { display: flex; gap: 8px; margin: 6px 0 4px; }
+.color-picker button {
+  width: 30px; height: 30px; border-radius: 50%; border: 2px solid transparent;
+  padding: 0;
+}
+.color-picker button.sel { border-color: var(--text); }
+.back-link {
+  background: none; border: none; color: var(--accent); font-size: 0.9rem;
+  padding: 0; margin-bottom: 8px;
+}
+.step-done { opacity: 0.6; }
+details.new-project, details.new-recurring {
+  margin-top: 14px; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px;
+}
+details.new-project summary, details.new-recurring summary {
+  cursor: pointer; font-weight: 600; color: var(--accent);
+}
+details.new-project label, details.new-recurring label {
+  display: flex; flex-direction: column; gap: 4px; font-size: 0.82rem;
+  color: var(--muted-text); margin-top: 10px;
+}
+details.new-project input, details.new-project select,
+details.new-recurring input, details.new-recurring select {
+  padding: 7px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--card-bg); color: var(--text); font-size: 0.95rem;
+}
+details.new-project button#projCreate, details.new-recurring button#recCreate {
+  margin-top: 12px; padding: 9px 14px; border-radius: 8px; border: none;
+  background: var(--accent); color: white; font-weight: 600;
 }
 
 .tabs {

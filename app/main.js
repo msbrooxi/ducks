@@ -1,22 +1,27 @@
 import {
   getTaskList, getTask, saveTask, newTask, touchTask, getSettings, saveSettings,
   getLocal, saveLocal, getConn, saveConn, isPastDue, ducksDayDate,
-  logEvent, CATEGORIES, SIZES, nowIso, uuid
+  logEvent, CATEGORIES, SIZES, nowIso, uuid,
+  getProjectList, getSteps, projectProgress
 } from './store.js';
 import { scheduleSync, syncNow, onSyncStatus, startBackgroundSync, exportEventLog } from './sync.js';
-import { doNextList, minutesFilter, fiveDucksFill, score } from './rank.js';
+import { doNextList, minutesFilter, fiveDucksFill, sortForList, LIST_SORTS } from './rank.js';
 import { playQuack, playParade } from './quack.js';
+import { computeFirstDue, computeNextDue, FREQUENCIES, recurrenceLabel } from './recurrence.js';
 
 // Bumped by hand on every shipped change. Shown in Settings so it's a
 // one-glance way to tell whether a device is actually running the latest
 // build, instead of guessing from a stale cached copy.
-const APP_BUILD = '2026-09-29.3';
+const APP_BUILD = '2026-09-29.4';
 
 let activeTab = 'home';
 let expandedTaskId = null;
 let minutesQuery = null;
-let listFilters = { category: '', size: '', ducks: '' };
+let listFilters = { category: '', size: '', ducks: '', sort: 'date' };
 let lastFiveDucksWhole = -1;
+let openProjectId = null;
+
+const PROJECT_COLORS = ['#3d5a80', '#9b5de5', '#e07a5f', '#2a9d8f', '#e63946', '#457b9d'];
 
 const app = document.getElementById('app');
 
@@ -27,6 +32,15 @@ function duckIcon(px = 18) {
 }
 function duckIcons(n, px = 16) {
   return duckIcon(px).repeat(n);
+}
+
+// A small colored, clickable chip on a step's card: nickname + progress
+// (e.g. "Main St 3/7"). Tapping it jumps to that project's detail view.
+function projectChip_(projectId) {
+  const project = getTask(projectId);
+  if (!project || !project.chip) return '';
+  const prog = projectProgress(projectId);
+  return `<button type="button" class="chip project-chip" style="background:${esc(project.chip.color)}" data-action="openProject" data-id="${esc(projectId)}">${esc(project.chip.nickname)} ${prog.done}/${prog.total}</button>`;
 }
 
 // ---------- helpers ----------
@@ -81,8 +95,31 @@ function addQuickTask(title, { due, size, category, ducks } = {}) {
 }
 
 function completeTask(id) {
+  const t = getTask(id);
   mutateTask(id, { status: 'done', completedAt: nowIso(), doingSince: null }, 'completed');
   playQuack();
+
+  // Recurring tasks keep only one live instance; completing it (whether
+  // early, on time, or late) spawns the next one on schedule, computed
+  // from the due date that was just completed, not from today.
+  if (t && t.recurrence) {
+    const nextDue = computeNextDue(t.recurrence, t.due || ducksDayDate());
+    if (nextDue) {
+      const spawned = newTask({
+        title: t.title,
+        ducks: t.ducks,
+        size: t.size,
+        category: t.category,
+        due: nextDue,
+        recurrence: t.recurrence,
+        source: t.source
+      });
+      saveTask(spawned);
+      logEvent('created', spawned.id, { recurringFrom: id });
+      scheduleSync();
+    }
+  }
+
   const settings = getSettings();
   const whole = Math.floor(fiveDucksFill(getTaskList(), settings));
   if (whole >= 5 && lastFiveDucksWhole < 5) {
@@ -110,6 +147,16 @@ function setDucks(id, ducks) {
 function deleteTask(id) {
   mutateTask(id, { deletedAt: nowIso(), status: 'active' }, 'deleted');
   if (expandedTaskId === id) expandedTaskId = null;
+}
+function deleteProject(id) {
+  const steps = getSteps(id);
+  const warn = steps.length
+    ? `Delete this project and its ${steps.length} step${steps.length > 1 ? 's' : ''}?`
+    : 'Delete this project?';
+  if (!confirm(warn)) return;
+  deleteTask(id);
+  steps.forEach((s) => deleteTask(s.id));
+  if (openProjectId === id) openProjectId = null;
 }
 function restoreTask(id) {
   mutateTask(id, { deletedAt: null }, 'restored');
@@ -145,6 +192,7 @@ function render() {
   if (activeTab === 'home') body = renderHome(tasks, settings, today);
   else if (activeTab === 'inbox') body = renderInbox(tasks);
   else if (activeTab === 'list') body = renderList(tasks, settings, today);
+  else if (activeTab === 'projects') body = renderProjects();
   else if (activeTab === 'done') body = renderDone(tasks);
   else body = renderSettings(settings);
 
@@ -200,13 +248,18 @@ function renderHeader() {
 function renderNav() {
   const tabs = [
     ['home', '🏠 Home'], ['inbox', '📥 Inbox'], ['list', '📋 List'],
-    ['done', '✅ Done'], ['settings', '⚙️ Settings']
+    ['projects', '🗂️ Projects'], ['done', '✅ Done'], ['settings', '⚙️ Settings']
   ];
   const nav = el(`<nav class="tabs">${tabs.map(([id, label]) => (
     `<button data-tab="${id}" class="${activeTab === id ? 'active' : ''}">${label}</button>`
   )).join('')}</nav>`);
   nav.querySelectorAll('button').forEach((btn) => {
-    btn.addEventListener('click', () => { activeTab = btn.dataset.tab; expandedTaskId = null; render(); });
+    btn.addEventListener('click', () => {
+      activeTab = btn.dataset.tab;
+      expandedTaskId = null;
+      if (btn.dataset.tab === 'projects') openProjectId = null;
+      render();
+    });
   });
   return nav;
 }
@@ -294,6 +347,8 @@ function taskCard(t, today = ducksDayDate()) {
         ${t.size ? `<span class="chip">${sizeLabel(t.size)}</span>` : ''}
         <span class="chip cat">${categoryLabel(t.category)}</span>
         ${t.doingSince ? '<span class="chip doing">doing now</span>' : ''}
+        ${t.recurrence ? `<span class="chip" title="${recurrenceLabel(t.recurrence)}">&#8635; repeats</span>` : ''}
+        ${t.projectId ? projectChip_(t.projectId) : ''}
       </div>
       <div class="card-actions">
         <button data-action="complete" data-id="${t.id}">Done</button>
@@ -359,9 +414,14 @@ function attachGlobalDelegation() {
     else if (action === 'start') startTask(id);
     else if (action === 'expand') { expandedTaskId = expandedTaskId === id ? null : id; render(); }
     else if (action === 'delete') deleteTask(id);
+    else if (action === 'deleteProject') deleteProject(id);
     else if (action === 'restore') restoreTask(id);
     else if (action === 'reopen') reopenTask(id);
     else if (action === 'moveToList') moveToList(id);
+    else if (action === 'stopRecurring') {
+      mutateTask(id, { recurrence: null }, 'edited', { field: 'recurrence', to: null });
+    }
+    else if (action === 'openProject') { openProjectId = id; activeTab = 'projects'; expandedTaskId = null; render(); }
     else if (action === 'setDucks') setDucks(id, Number(btn.dataset.n));
     else if (action === 'snooze') {
       const when = btn.dataset.when;
@@ -404,8 +464,16 @@ function renderInbox(tasks) {
   `);
 }
 
+const SORT_HEADINGS = {
+  date: 'Sorted by date',
+  ducks: 'Sorted by ducks',
+  duration: 'Sorted by duration, shortest first'
+};
+
 function renderList(tasks, settings, today) {
-  const active = tasks.filter((t) => t.status === 'active');
+  // Project "head" tasks are containers, not to-dos, they live on the
+  // Projects tab; their steps show here like any other task.
+  const active = tasks.filter((t) => t.status === 'active' && !t.chip);
   const pastDue = active.filter((t) => isPastDue(t, today))
     .sort((a, b) => (a.due < b.due ? -1 : 1));
   let rest = active.filter((t) => !isPastDue(t, today));
@@ -416,12 +484,13 @@ function renderList(tasks, settings, today) {
     if (listFilters.ducks === 'unrated') rest = rest.filter((t) => t.ducks == null);
     else rest = rest.filter((t) => t.ducks === Number(listFilters.ducks));
   }
-  rest.sort((a, b) => score(b, settings, today) - score(a, settings, today));
+  rest = sortForList(rest, listFilters.sort);
 
   const wrap = el(`
     <section class="tabpanel">
       <h2>List</h2>
       <div class="filters">
+        <select id="fSort">${LIST_SORTS.map((s) => `<option value="${s.id}" ${listFilters.sort === s.id ? 'selected' : ''}>Sort: ${s.label}</option>`).join('')}</select>
         <select id="fCategory"><option value="">All categories</option>${CATEGORIES.map((c) => `<option value="${c.id}" ${listFilters.category === c.id ? 'selected' : ''}>${c.label}</option>`).join('')}</select>
         <select id="fSize"><option value="">All sizes</option>${SIZES.map((s) => `<option value="${s.id}" ${listFilters.size === s.id ? 'selected' : ''}>${s.label}</option>`).join('')}</select>
         <select id="fDucks">
@@ -431,15 +500,150 @@ function renderList(tasks, settings, today) {
         </select>
       </div>
       ${pastDue.length ? `<h3>Past due</h3><div class="cards">${pastDue.map((t) => taskCard(t, today)).join('')}</div>` : ''}
-      <h3>Everything else</h3>
+      <h3>${SORT_HEADINGS[listFilters.sort] || SORT_HEADINGS.date}</h3>
       <div class="cards">
         ${rest.length ? rest.map((t) => taskCard(t, today)).join('') : '<p class="empty">Nothing matches these filters.</p>'}
       </div>
     </section>
   `);
+  wrap.querySelector('#fSort').addEventListener('change', (e) => { listFilters.sort = e.target.value; render(); });
   wrap.querySelector('#fCategory').addEventListener('change', (e) => { listFilters.category = e.target.value; render(); });
   wrap.querySelector('#fSize').addEventListener('change', (e) => { listFilters.size = e.target.value; render(); });
   wrap.querySelector('#fDucks').addEventListener('change', (e) => { listFilters.ducks = e.target.value; render(); });
+  return wrap;
+}
+
+function renderProjects() {
+  if (openProjectId) {
+    const project = getTask(openProjectId);
+    if (project && project.chip) return renderProjectDetail(project);
+    openProjectId = null; // stale or deleted, fall through to the list
+  }
+
+  const projects = getProjectList();
+  const wrap = el(`
+    <section class="tabpanel">
+      <h2>Projects</h2>
+      <p class="hint">A project holds a set of steps under one bigger body of work, like a real estate deal with everything that has to happen before close.</p>
+      ${projects.length ? `
+        <div class="cards">
+          ${projects.map((p) => {
+            const prog = projectProgress(p.id);
+            return `
+              <div class="card" data-id="${p.id}">
+                <div class="card-title">
+                  <span class="project-dot" style="background:${esc(p.chip.color)}"></span>
+                  ${esc(p.chip.nickname)}: ${esc(p.title)}
+                </div>
+                <div class="card-meta">
+                  <span class="chip">${prog.done}/${prog.total} steps</span>
+                  ${p.ducks ? `<span class="chip">${duckIcons(p.ducks, 14)}</span>` : ''}
+                  ${p.due ? `<span class="chip due">due ${fmtDue(p.due)}</span>` : ''}
+                </div>
+                <div class="card-actions">
+                  <button data-action="openProject" data-id="${p.id}">Open</button>
+                  <button data-action="deleteProject" data-id="${p.id}">Delete project</button>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      ` : '<p class="empty">No projects yet.</p>'}
+
+      <details class="new-project">
+        <summary>+ New project</summary>
+        <label>Project title
+          <input id="projTitle" placeholder="e.g. Sell Main Street">
+        </label>
+        <label>Short nickname (shown as a chip everywhere its steps appear)
+          <input id="projNickname" placeholder="e.g. Main St" maxlength="16">
+        </label>
+        <label>Color</label>
+        <div class="color-picker" id="projColor">
+          ${PROJECT_COLORS.map((c, i) => `<button type="button" data-color="${c}" class="${i === 0 ? 'sel' : ''}" style="background:${c}"></button>`).join('')}
+        </div>
+        <button id="projCreate">Create project</button>
+      </details>
+    </section>
+  `);
+
+  wrap.querySelectorAll('#projColor button').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      wrap.querySelectorAll('#projColor button').forEach((b) => b.classList.remove('sel'));
+      btn.classList.add('sel');
+    });
+  });
+  wrap.querySelector('#projCreate').addEventListener('click', () => {
+    const title = wrap.querySelector('#projTitle').value.trim();
+    const nickname = wrap.querySelector('#projNickname').value.trim();
+    const colorBtn = wrap.querySelector('#projColor button.sel');
+    if (!title || !nickname) {
+      alert('Give the project a title and a short nickname.');
+      return;
+    }
+    const p = newTask({ title, size: 'XL', chip: { nickname, color: colorBtn.dataset.color } });
+    saveTask(p);
+    logEvent('created', p.id, { project: true });
+    scheduleSync();
+    openProjectId = p.id;
+    render();
+  });
+
+  return wrap;
+}
+
+function renderProjectDetail(project) {
+  const steps = getSteps(project.id);
+  const prog = projectProgress(project.id);
+  const wrap = el(`
+    <section class="tabpanel">
+      <button type="button" id="backToProjects" class="back-link">&larr; All projects</button>
+      <h2><span class="project-dot" style="background:${esc(project.chip.color)}"></span> ${esc(project.chip.nickname)}: ${esc(project.title)}</h2>
+      <p class="hint">${prog.done} of ${prog.total} steps done</p>
+
+      <div class="cards">
+        ${steps.length ? steps.map((s) => `
+          <div class="card ${s.status === 'done' ? 'step-done' : ''}" data-id="${s.id}">
+            <div class="card-title">${esc(s.title)}</div>
+            <div class="card-meta">
+              ${s.due ? `<span class="chip due">due ${fmtDue(s.due)}</span>` : ''}
+              ${s.ducks ? `<span class="chip">${duckIcons(s.ducks, 14)}</span>` : ''}
+              ${s.size ? `<span class="chip">${sizeLabel(s.size)}</span>` : ''}
+            </div>
+            <div class="card-actions">
+              ${s.status === 'done'
+                ? `<button data-action="reopen" data-id="${s.id}">Reopen</button>`
+                : `<button data-action="complete" data-id="${s.id}">Done</button>`}
+              <button data-action="expand" data-id="${s.id}">Details</button>
+              <button data-action="delete" data-id="${s.id}">Delete step</button>
+            </div>
+            ${expandedTaskId === s.id ? taskEditor(s) : ''}
+          </div>
+        `).join('') : '<p class="empty">No steps yet, add the first one below.</p>'}
+      </div>
+
+      <form id="addStepForm" class="quickadd" style="margin-top:16px">
+        <input id="addStepInput" type="text" placeholder="Add a step..." autocomplete="off">
+        <button type="submit">Add</button>
+      </form>
+    </section>
+  `);
+
+  wrap.querySelector('#backToProjects').addEventListener('click', () => { openProjectId = null; render(); });
+  wrap.querySelector('#addStepForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const input = wrap.querySelector('#addStepInput');
+    const title = input.value.trim();
+    if (!title) return;
+    const order = getSteps(project.id).length;
+    const s = newTask({ title, projectId: project.id, order });
+    saveTask(s);
+    logEvent('created', s.id, { step: true, projectId: project.id });
+    scheduleSync();
+    input.value = '';
+    render();
+  });
+
   return wrap;
 }
 
@@ -517,6 +721,61 @@ function renderSettings(settings) {
       <h2>Export</h2>
       <button id="exportBtn">Export event log (JSON + CSV)</button>
 
+      <h2>Recurring tasks</h2>
+      <p class="hint">Keeps one live instance going. Completing it creates the next one on schedule, computed from the due date, not from when you actually check it off.</p>
+      ${(() => {
+        const active = getTaskList().filter((t) => t.status === 'active' && t.recurrence);
+        return active.length ? `
+          <div class="cards">
+            ${active.map((t) => `
+              <div class="card" data-id="${t.id}">
+                <div class="card-title">${esc(t.title)}</div>
+                <div class="card-meta">
+                  <span class="chip">${recurrenceLabel(t.recurrence)}</span>
+                  ${t.due ? `<span class="chip due">next ${fmtDue(t.due)}</span>` : ''}
+                </div>
+                <div class="card-actions">
+                  <button data-action="stopRecurring" data-id="${t.id}">Stop repeating</button>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        ` : '<p class="empty">None set up yet.</p>';
+      })()}
+
+      <details class="new-recurring">
+        <summary>+ New recurring task</summary>
+        <label>Title
+          <input id="recTitle" placeholder="e.g. Deposit mortgage check">
+        </label>
+        <label>Frequency
+          <select id="recFreq">
+            ${FREQUENCIES.map((f) => `<option value="${f.id}">${f.label}</option>`).join('')}
+          </select>
+        </label>
+        <label id="recDayLabel">${FREQUENCIES[0].dayHint}
+          <input id="recDay" type="number" min="1" max="31" value="1">
+        </label>
+        <label>Ducks
+          <select id="recDucks">
+            <option value="">Not rated</option>
+            ${[1, 2, 3, 4, 5].map((n) => `<option value="${n}">${n} duck${n > 1 ? 's' : ''}</option>`).join('')}
+          </select>
+        </label>
+        <label>Duration
+          <select id="recSize">
+            <option value="">Not set</option>
+            ${SIZES.map((s) => `<option value="${s.id}">${sizeLabel(s.id)}</option>`).join('')}
+          </select>
+        </label>
+        <label>Category
+          <select id="recCategory">
+            ${CATEGORIES.map((c) => `<option value="${c.id}" ${c.id === 'money' ? 'selected' : ''}>${c.label}</option>`).join('')}
+          </select>
+        </label>
+        <button id="recCreate">Create recurring task</button>
+      </details>
+
       <h2>Kid links</h2>
       <p class="hint">Paste each kid's key (the value you set as KID_ANGEL / KID_MAX / KID_BRIE in Apps Script) to get their shareable link.</p>
       ${['angel', 'max', 'brie'].map((slug) => `
@@ -540,6 +799,35 @@ function renderSettings(settings) {
   });
   wrap.querySelector('#muted').addEventListener('change', (e) => saveLocal({ muted: e.target.checked }));
   wrap.querySelector('#exportBtn').addEventListener('click', doExport);
+
+  const recFreq = wrap.querySelector('#recFreq');
+  recFreq.addEventListener('change', () => {
+    const f = FREQUENCIES.find((x) => x.id === recFreq.value) || FREQUENCIES[0];
+    wrap.querySelector('#recDayLabel').firstChild.textContent = f.dayHint;
+  });
+  wrap.querySelector('#recCreate').addEventListener('click', () => {
+    const title = wrap.querySelector('#recTitle').value.trim();
+    const day = Number(wrap.querySelector('#recDay').value);
+    if (!title || !day || day < 1 || day > 31) {
+      alert('Give it a title and a day number from 1 to 31.');
+      return;
+    }
+    const recurrence = { freq: recFreq.value, day };
+    const due = computeFirstDue(recurrence, ducksDayDate());
+    const ducksVal = wrap.querySelector('#recDucks').value;
+    const t = newTask({
+      title,
+      recurrence,
+      due,
+      ducks: ducksVal ? Number(ducksVal) : null,
+      size: wrap.querySelector('#recSize').value || null,
+      category: wrap.querySelector('#recCategory').value || 'admin'
+    });
+    saveTask(t);
+    logEvent('created', t.id, { recurring: true });
+    scheduleSync();
+    render();
+  });
 
   for (const slug of ['angel', 'max', 'brie']) {
     const input = wrap.querySelector(`[data-kidkey="${slug}"]`);

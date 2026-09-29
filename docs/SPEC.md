@@ -53,18 +53,50 @@ fieldUpdatedAt  { [field]: ISO }   added 2026-09-29, see Sync protocol below;
 ```
 Setting ducks to 0 in the UI offers to delete; 0 is never stored.
 
-**Reserved for later phases (present in the schema, unused in Phase 1):**
+**Built ahead of schedule (2026-09-29):** projects/steps and recurring tasks
+were originally scoped for Phase 2, but Stephanie asked for both while
+working through Phase 1, so they're live now. Waiting-on and process
+templates are still genuinely Phase 2/3, not built:
 ```
-projectId     string | null    Phase 2: step belongs to project task
-order         number | null    Phase 2: step order within project
-waiting       { who, since, followUpBusinessDays } | null   Phase 2
-recurrence    { rule, anchorDay } | null                   Phase 2
+projectId     string | null    a step's parent project task's id
+order         number | null    a step's position within its project
+chip          { nickname, color } | null   set only on a project "head"
+              task (projectId null); its presence is what marks a task as
+              a project rather than an ordinary to-do
+recurrence    { freq: "monthly" | "quarterly", day: 1..31 } | null
+              see Recurring tasks below
+```
+```
+waiting       { who, since, followUpBusinessDays } | null   Phase 2, not built
 template      { instanceId, stepKey, dependsOn[], anchor, offsetDays,
-                critical } | null                          Phase 3
+                critical } | null                    Phase 3, not built
 ```
-A project is itself a Task (usually size XL) with `projectId = null`; steps
-point at it. Project nickname and color live on the project task as
-`chip: { nickname, color }`.
+A project is itself a Task (usually size XL) with `projectId = null` and a
+`chip` set; steps are ordinary tasks with `projectId` pointing at it. A
+project head never appears in Do Next, the List tab, or "I have X minutes",
+it's a container, not something to do directly (`app/rank.js` and
+`renderList` both filter out any task with a `chip`). Its steps show up
+everywhere normally, plus a small colored chip (nickname + "3/7" progress)
+that jumps to the project's detail view on tap. Deleting a project
+(Projects tab) soft-deletes its steps along with it, same 30-day Duck Pond
+rule as any other delete. `getProjectList()`, `getSteps(projectId)`, and
+`projectProgress(projectId)` in `store.js` are the read helpers; there's no
+write helper beyond the normal task save, a step is just a task.
+
+### Recurring tasks
+One live instance at a time, no separate "series" record. Completing an
+instance spawns the next one, due-date math done in `app/recurrence.js`,
+always stepping forward from the *rule*, not from today or from when it
+was actually completed, so finishing late or early never drifts the
+schedule. Two frequencies, chosen to match what Stephanie actually named
+(mortgage deposits, quarterly sales tax):
+- `monthly`: a fixed day of every month (`day` clamped to the month's
+  actual length, so day 31 in February lands on the 28th/29th).
+- `quarterly`: a fixed day counted from each calendar quarter's first day
+  as day 1 (quarters are Jan-Mar/Apr-Jun/Jul-Sep/Oct-Dec).
+Created from Settings > Recurring tasks. Missed recurring items behave
+like any other past-due task (pinned at top, Start/Snooze). "Stop
+repeating" clears `recurrence` without touching the task itself.
 
 ### Settings (synced, has its own updatedAt)
 ```
