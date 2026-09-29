@@ -35,7 +35,7 @@ id            string   uuid, created on the device
 title         string   required
 notes         string?  optional
 link          string?  optional
-ducks         1..5 | null   null = "not rated yet"; ranks as 3
+ducks         1..5 | null   null = "not rated yet"; ranks as 2 (revised 2026-09-29, was 3)
 due           "YYYY-MM-DD" | null
 size          "XS" | "S" | "M" | "L" | "XL" | null   null ranks/fills as L,
                                                      excluded from "I have X minutes"
@@ -116,7 +116,7 @@ recorded.
   pinned at the top of the main list.
 - Score for everything else:
   `score = (1 - s) * urgency + s * importance`, `s = rankSlider / 100`
-  - importance = (ducks ?? 3) / 5
+  - importance = (ducks ?? 2) / 5
   - urgency = 1.0 due today, decaying toward 0 over ~14 days; 0 if no due date
 - Do Next (3 slots) after past-due: one **due-soon** (due within
   dueSoonDays), one **high-duck not urgent** (ducks >= 4, not due-soon), one

@@ -15,7 +15,7 @@ function daysUntil_(dueStr, today) {
 
 export function score(task, settings, today = ducksDayDate()) {
   const s = (settings.rankSlider ?? 50) / 100;
-  const importance = (task.ducks ?? 3) / 5;
+  const importance = (task.ducks ?? 2) / 5;
   const days = daysUntil_(task.due, today);
   let urgency = 0;
   if (task.due) {
