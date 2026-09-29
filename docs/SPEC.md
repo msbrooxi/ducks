@@ -40,8 +40,10 @@ due           "YYYY-MM-DD" | null
 size          "XS" | "S" | "M" | "L" | "XL" | null   null ranks/fills as L,
                                                      excluded from "I have X minutes"
 category      "admin" | "conversation" | "meetup" | "deep" | "decision" |
-              "errand" | "money"   default "admin" ("meetup" added
-              2026-09-29: meetings, lunches, any scheduled get-together)
+              "errand" | "handson" | "money"   default "admin"
+              ("meetup" added 2026-09-29: meetings, lunches, any scheduled
+              get-together; "handson" added same day: house/yard/garden
+              work, anything manual you actively have to DO)
 status        "inbox" | "active" | "done"      (Phase 2 adds "waiting")
 doingSince    ISO | null   set by Start; cleared on done/snooze
 source        "me" | "angel" | "max" | "brie"

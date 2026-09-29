@@ -16,6 +16,7 @@ export const CATEGORIES = [
   { id: 'deep', label: 'Deep work' },
   { id: 'decision', label: 'Decision' },
   { id: 'errand', label: 'Errand' },
+  { id: 'handson', label: 'Hands-on' },
   { id: 'money', label: 'Money and Filings' }
 ];
 
