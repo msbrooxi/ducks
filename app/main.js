@@ -7,6 +7,11 @@ import { scheduleSync, syncNow, onSyncStatus, startBackgroundSync, exportEventLo
 import { doNextList, minutesFilter, fiveDucksFill, score } from './rank.js';
 import { playQuack, playParade } from './quack.js';
 
+// Bumped by hand on every shipped change. Shown in Settings so it's a
+// one-glance way to tell whether a device is actually running the latest
+// build, instead of guessing from a stale cached copy.
+const APP_BUILD = '2026-09-29.1';
+
 let activeTab = 'home';
 let expandedTaskId = null;
 let minutesQuery = null;
@@ -520,6 +525,8 @@ function renderSettings(settings) {
         </label>
         <div class="kidlink" id="kidlink_${slug}"></div>
       `).join('')}
+
+      <p class="hint build-line">App version ${APP_BUILD}. If this doesn't match what Claude last told you, fully close the app (swipe it away in the app switcher on iPhone, or close the tab on your laptop) and reopen it.</p>
     </section>
   `);
 
