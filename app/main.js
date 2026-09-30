@@ -12,7 +12,7 @@ import { computeFirstDue, computeNextDue, FREQUENCIES, recurrenceLabel } from '.
 // Bumped by hand on every shipped change. Shown in Settings so it's a
 // one-glance way to tell whether a device is actually running the latest
 // build, instead of guessing from a stale cached copy.
-const APP_BUILD = '2026-09-30.2';
+const APP_BUILD = '2026-09-30.3';
 
 let activeTab = 'home';
 let expandedTaskId = null;
@@ -518,19 +518,32 @@ function attachGlobalDelegation() {
   });
   app.addEventListener('input', (e) => {
     const field = e.target.dataset && e.target.dataset.field;
-    if (!field || !isTextLikeField_(e.target)) return;
-    scheduleFieldSave(e.target.dataset.id, field, e.target.value);
+    if (!field || !isDebouncedField_(e.target)) return;
+    let value = e.target.value;
+    if (field === 'due' && value === '') value = null;
+    scheduleFieldSave(e.target.dataset.id, field, value);
   });
+  // A field that just got debounced-saved commits immediately on blur
+  // instead of waiting out the rest of its debounce window, so tabbing or
+  // tapping away feels instant rather than laggy. 'blur' doesn't bubble,
+  // so this listens in the capturing phase.
+  app.addEventListener('blur', (e) => {
+    const field = e.target.dataset && e.target.dataset.field;
+    if (!field || !isDebouncedField_(e.target)) return;
+    render(); // flushes any pending edit for this field first, see render()
+  }, true);
   app.addEventListener('change', (e) => {
     const field = e.target.dataset && e.target.dataset.field;
     if (!field) return;
-    // Title/notes/link already autosave on every keystroke via 'input'
-    // above, without a render. Re-saving (and re-rendering) again here on
-    // blur would just be a redundant, unnecessary jump right after typing.
-    if (isTextLikeField_(e.target)) return;
+    // Title/notes/link/due already autosave via 'input' above (a date
+    // input fires 'change' on every intermediate keystroke too, e.g.
+    // typing "1" of "10" briefly reads as day/month "01", which used to
+    // save and re-render immediately, jumping the card mid-keystroke;
+    // debouncing through 'input' instead fixes that). Re-saving here on
+    // top would just be redundant.
+    if (isDebouncedField_(e.target)) return;
     const id = e.target.dataset.id;
     let value = e.target.value;
-    if (field === 'due' && value === '') value = null;
     if (field === 'dependsOn') {
       value = Array.from(e.target.selectedOptions).map((opt) => opt.value);
     }
@@ -538,8 +551,9 @@ function attachGlobalDelegation() {
   });
 }
 
-function isTextLikeField_(el) {
-  return el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && (el.type === 'text' || el.type === 'url'));
+function isDebouncedField_(el) {
+  return el.tagName === 'TEXTAREA' ||
+    (el.tagName === 'INPUT' && (el.type === 'text' || el.type === 'url' || el.type === 'date'));
 }
 
 function renderInbox(tasks) {

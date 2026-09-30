@@ -267,6 +267,30 @@ one field while another text field is focused clears that field's focus
 back into it to keep typing. A real fix would mean not fully rebuilding
 the DOM on every change, a bigger change than this warranted tonight.
 
+**Round 2 (still 2026-09-30):** the date field itself had the same class
+of bug even on its own, worse than the general case above. A native
+`<input type="date">` fires `input`/`change` on every partial keystroke
+once all three segments hold *some* value, not just once a complete date
+is actually intended, so typing "10" for October read as day/month "01"
+(January) the instant the "1" landed, and that intermediate value was
+saving and re-rendering immediately. The due-date input now goes through
+the same debounced, no-render autosave as title/notes/link
+(`isDebouncedField_()` covers `type="date"` too), so partial keystrokes
+never commit. A `blur` listener (capturing phase, since blur doesn't
+bubble) flushes immediately once she taps or tabs away, so a completed
+edit still shows up right away rather than waiting out the debounce.
+
+**Also 2026-09-30, unrelated but discovered the same night:** the
+service worker (`sw.js`) was cache-first (check the cache, only hit the
+network if nothing was cached). That meant a device that already had
+something cached could keep serving it indefinitely, well past what
+"close the app and reopen it" should mean, which is exactly what
+happened, the app version shown in Settings stayed on an old build
+through multiple close/reopen cycles. Switched to network-first: always
+try the real current files first when there's a connection, cache is
+purely an offline fallback now, never something that can go stale and
+quietly keep being served.
+
 ## Build order
 0. **Test first:** throwaway Apps Script + Pages page. Stephanie tests from
    iPhone and a Samsung: write, read, kid submit. Stop and rethink if it fails.
