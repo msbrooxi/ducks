@@ -12,7 +12,7 @@ import { computeFirstDue, computeNextDue, FREQUENCIES, recurrenceLabel } from '.
 // Bumped by hand on every shipped change. Shown in Settings so it's a
 // one-glance way to tell whether a device is actually running the latest
 // build, instead of guessing from a stale cached copy.
-const APP_BUILD = '2026-09-30.1';
+const APP_BUILD = '2026-09-30.2';
 
 let activeTab = 'home';
 let expandedTaskId = null;
@@ -79,6 +79,13 @@ function el(html) {
 }
 
 function mutateTask(id, patch, eventType, eventExtra) {
+  // Flush any pending debounced text-field edit for THIS task first, so a
+  // duck rating (or any other button/select action) never reads a stale
+  // copy of the task that's still missing a title/notes/link edit sitting
+  // in the pending-save queue. render() also flushes everything, but
+  // doing it here first means mutateTask's own read-modify-write is never
+  // the one working from stale data, belt and suspenders.
+  flushPendingFieldEdits();
   const t = getTask(id);
   if (!t) return;
   const updated = touchTask(t, patch);
