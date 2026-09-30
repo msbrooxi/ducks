@@ -238,6 +238,35 @@ recorded.
   visible color. Fixed with `display: inline-block` so the row shrinks to
   the icons' own width.
 
+## Task editor stability (added 2026-09-30)
+Every field change re-renders the whole app (see "The workflow" generally
+and `render()` in `main.js`), which tears down and rebuilds every input on
+the page. Two real bugs came from that once the List tab got sort options:
+- **Data loss**: changing due date (a `<select>`/date input, which saves
+  immediately) re-rendered the page, which destroyed any text mid-typed
+  into title/notes/link that hadn't been blurred yet, so it was never
+  saved. Fixed: those three fields now autosave on every keystroke,
+  debounced 600ms, WITHOUT triggering a render (so typing doesn't lose
+  focus mid-word). `render()` always flushes any pending one first, so
+  whatever triggers the next rebuild can never throw away an
+  already-typed, not-yet-debounced keystroke. `scheduleFieldSave()` /
+  `flushPendingFieldEdits()` in `main.js`.
+- **Bouncing**: since List can now sort by date, changing a task's due
+  date while its Details panel was open would immediately re-sort and
+  visibly relocate the card mid-edit. Fixed: while a task's editor is
+  open, `renderList()` reuses last render's order (`frozenListOrder` /
+  `frozenListForTaskId` in `main.js`) instead of re-sorting from scratch,
+  so editing holds still. Cleared (forcing a fresh sort) when the editor
+  closes, a different task is expanded, or a filter/sort control is
+  deliberately changed. Deliberately NOT extended to the Past Due
+  section: a task whose date edit actually resolves its overdue status
+  moving out of Past Due is correct, not a bug.
+Known remaining rough edge: a render still rebuilds the DOM, so changing
+one field while another text field is focused clears that field's focus
+(the typed text itself is safe, just the cursor), she'd need to click
+back into it to keep typing. A real fix would mean not fully rebuilding
+the DOM on every change, a bigger change than this warranted tonight.
+
 ## Build order
 0. **Test first:** throwaway Apps Script + Pages page. Stephanie tests from
    iPhone and a Samsung: write, read, kid submit. Stop and rethink if it fails.

@@ -12,7 +12,7 @@ import { computeFirstDue, computeNextDue, FREQUENCIES, recurrenceLabel } from '.
 // Bumped by hand on every shipped change. Shown in Settings so it's a
 // one-glance way to tell whether a device is actually running the latest
 // build, instead of guessing from a stale cached copy.
-const APP_BUILD = '2026-09-29.7';
+const APP_BUILD = '2026-09-30.1';
 
 let activeTab = 'home';
 let expandedTaskId = null;
@@ -20,6 +20,16 @@ let minutesQuery = null;
 let listFilters = { category: '', size: '', ducks: '', sort: 'date' };
 let lastFiveDucksWhole = -1;
 let openProjectId = null;
+
+// While a task's Details is open, the List tab keeps it (and everything
+// else) in whatever order it was already in, rather than re-sorting on
+// every keystroke or field change. Changing a task's due date while its
+// editor is open used to immediately jump it to wherever the new date
+// sorts to, mid-edit, which read as the app "bouncing around" and losing
+// her place. Cleared (forcing a fresh sort) whenever the editor closes,
+// the expanded task changes, or the sort/filter controls change.
+let frozenListOrder = null;
+let frozenListForTaskId = null;
 
 const PROJECT_COLORS = ['#3d5a80', '#9b5de5', '#e07a5f', '#2a9d8f', '#e63946', '#457b9d'];
 
@@ -76,6 +86,54 @@ function mutateTask(id, patch, eventType, eventExtra) {
   if (eventType) logEvent(eventType, id, eventExtra || {});
   scheduleSync();
   render();
+}
+
+// Text fields (title/notes/link) autosave on every keystroke, debounced,
+// but WITHOUT calling render(): re-rendering while she's mid-keystroke
+// would tear down and rebuild the very input she's typing into, losing
+// focus and the cursor position. Any other field (date, size, ducks...)
+// still renders immediately when it changes, since that's a deliberate,
+// discrete choice, not an in-progress keystroke.
+//
+// The real bug this fixes: changing the due date used to trigger an
+// immediate render (a full rebuild + re-sort of the list), which would
+// wipe out anything typed into another field that hadn't been blurred
+// yet, since a render tears down and recreates every input from
+// scratch. render() now flushes these first, so no keystroke is ever
+// thrown away no matter what else triggers a rebuild.
+const pendingFieldTimers = {};
+const pendingFieldValues = {};
+
+function flushPendingFieldEdits() {
+  const keys = Object.keys(pendingFieldValues);
+  for (const key of keys) {
+    const pending = pendingFieldValues[key];
+    clearTimeout(pendingFieldTimers[key]);
+    delete pendingFieldTimers[key];
+    delete pendingFieldValues[key];
+    const t = getTask(pending.id);
+    if (!t) continue;
+    saveTask(touchTask(t, { [pending.field]: pending.value }));
+    logEvent('edited', pending.id, { field: pending.field, to: pending.value });
+  }
+  if (keys.length > 0) scheduleSync();
+}
+
+function scheduleFieldSave(id, field, value) {
+  const key = id + ':' + field;
+  pendingFieldValues[key] = { id, field, value };
+  clearTimeout(pendingFieldTimers[key]);
+  pendingFieldTimers[key] = setTimeout(() => {
+    delete pendingFieldTimers[key];
+    const pending = pendingFieldValues[key];
+    delete pendingFieldValues[key];
+    if (!pending) return;
+    const t = getTask(pending.id);
+    if (!t) return;
+    saveTask(touchTask(t, { [pending.field]: pending.value }));
+    logEvent('edited', pending.id, { field: pending.field, to: pending.value });
+    scheduleSync();
+  }, 600);
 }
 
 function addQuickTask(title, { due, size, category, ducks } = {}) {
@@ -181,6 +239,7 @@ function plusDays(n, from = new Date()) {
 // ---------- rendering ----------
 
 function render() {
+  flushPendingFieldEdits();
   const tasks = getTaskList();
   const settings = getSettings();
   const today = ducksDayDate();
@@ -450,9 +509,18 @@ function attachGlobalDelegation() {
       snoozeTask(id, to);
     }
   });
+  app.addEventListener('input', (e) => {
+    const field = e.target.dataset && e.target.dataset.field;
+    if (!field || !isTextLikeField_(e.target)) return;
+    scheduleFieldSave(e.target.dataset.id, field, e.target.value);
+  });
   app.addEventListener('change', (e) => {
     const field = e.target.dataset && e.target.dataset.field;
     if (!field) return;
+    // Title/notes/link already autosave on every keystroke via 'input'
+    // above, without a render. Re-saving (and re-rendering) again here on
+    // blur would just be a redundant, unnecessary jump right after typing.
+    if (isTextLikeField_(e.target)) return;
     const id = e.target.dataset.id;
     let value = e.target.value;
     if (field === 'due' && value === '') value = null;
@@ -461,6 +529,10 @@ function attachGlobalDelegation() {
     }
     mutateTask(id, { [field]: value }, 'edited', { field, to: value });
   });
+}
+
+function isTextLikeField_(el) {
+  return el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && (el.type === 'text' || el.type === 'url'));
 }
 
 function renderInbox(tasks) {
@@ -508,7 +580,23 @@ function renderList(tasks, settings, today) {
     if (listFilters.ducks === 'unrated') rest = rest.filter((t) => t.ducks == null);
     else rest = rest.filter((t) => t.ducks === Number(listFilters.ducks));
   }
-  rest = sortForList(rest, listFilters.sort);
+
+  if (expandedTaskId && frozenListOrder && frozenListForTaskId === expandedTaskId) {
+    // Keep editing in place: reuse the last order, dropping anything that
+    // no longer matches (deleted, done, filtered out), appending anything
+    // new at the end in normal sorted order.
+    const byId = {};
+    rest.forEach((t) => { byId[t.id] = t; });
+    const kept = frozenListOrder.map((id) => byId[id]).filter(Boolean);
+    const keptIds = new Set(kept.map((t) => t.id));
+    const fresh = sortForList(rest.filter((t) => !keptIds.has(t.id)), listFilters.sort);
+    rest = kept.concat(fresh);
+  } else {
+    rest = sortForList(rest, listFilters.sort);
+  }
+  frozenListOrder = rest.map((t) => t.id);
+  frozenListForTaskId = expandedTaskId;
+
   const fill = fiveDucksFill(tasks, settings, today);
 
   const wrap = el(`
@@ -532,10 +620,11 @@ function renderList(tasks, settings, today) {
       </div>
     </section>
   `);
-  wrap.querySelector('#fSort').addEventListener('change', (e) => { listFilters.sort = e.target.value; render(); });
-  wrap.querySelector('#fCategory').addEventListener('change', (e) => { listFilters.category = e.target.value; render(); });
-  wrap.querySelector('#fSize').addEventListener('change', (e) => { listFilters.size = e.target.value; render(); });
-  wrap.querySelector('#fDucks').addEventListener('change', (e) => { listFilters.ducks = e.target.value; render(); });
+  const resortAnd_ = (fn) => (e) => { fn(e); frozenListOrder = null; render(); };
+  wrap.querySelector('#fSort').addEventListener('change', resortAnd_((e) => { listFilters.sort = e.target.value; }));
+  wrap.querySelector('#fCategory').addEventListener('change', resortAnd_((e) => { listFilters.category = e.target.value; }));
+  wrap.querySelector('#fSize').addEventListener('change', resortAnd_((e) => { listFilters.size = e.target.value; }));
+  wrap.querySelector('#fDucks').addEventListener('change', resortAnd_((e) => { listFilters.ducks = e.target.value; }));
   return wrap;
 }
 
