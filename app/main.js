@@ -12,7 +12,7 @@ import { computeFirstDue, computeNextDue, FREQUENCIES, recurrenceLabel } from '.
 // Bumped by hand on every shipped change. Shown in Settings so it's a
 // one-glance way to tell whether a device is actually running the latest
 // build, instead of guessing from a stale cached copy.
-const APP_BUILD = '2026-09-30.3';
+const APP_BUILD = '2026-10-01.1';
 
 let activeTab = 'home';
 let expandedTaskId = null;
@@ -470,6 +470,20 @@ function taskEditor(t) {
         </select>
       </label>
       <p class="hint">Ctrl/Cmd-click (or tap and drag on a phone) to pick more than one. Empty means no pre-reqs.</p>
+      ${!t.chip ? `
+        <label>Project
+          <select data-action-select="moveToProject" data-id="${t.id}">
+            <option value="">(none, not part of a project)</option>
+            ${getProjectList().map((p) => (
+              `<option value="${p.id}" ${t.projectId === p.id ? 'selected' : ''}>${esc(p.chip.nickname)}: ${esc(p.title)}</option>`
+            )).join('')}
+          </select>
+        </label>
+      ` : ''}
+      <div class="save-row">
+        <button data-action="explicitSave" data-id="${t.id}" class="save-btn">Save</button>
+        <span class="save-confirm" id="saveConfirm-${t.id}"></span>
+      </div>
       <button data-action="delete" data-id="${t.id}" class="danger">Delete this task</button>
     </div>
   `;
@@ -515,6 +529,16 @@ function attachGlobalDelegation() {
       const to = when === 'tomorrow' ? plusDays(1) : when === '3days' ? plusDays(3) : nextMonday();
       snoozeTask(id, to);
     }
+    else if (action === 'explicitSave') {
+      flushPendingFieldEdits();
+      syncNow();
+      render();
+      const span = document.getElementById('saveConfirm-' + id);
+      if (span) {
+        span.textContent = 'Saved!';
+        setTimeout(() => { if (span.isConnected) span.textContent = ''; }, 2000);
+      }
+    }
   });
   app.addEventListener('input', (e) => {
     const field = e.target.dataset && e.target.dataset.field;
@@ -533,6 +557,13 @@ function attachGlobalDelegation() {
     render(); // flushes any pending edit for this field first, see render()
   }, true);
   app.addEventListener('change', (e) => {
+    if (e.target.dataset && e.target.dataset.actionSelect === 'moveToProject') {
+      const id = e.target.dataset.id;
+      const projectId = e.target.value || null;
+      const order = projectId ? getSteps(projectId).length : null;
+      mutateTask(id, { projectId, order }, 'edited', { field: 'projectId', to: projectId });
+      return;
+    }
     const field = e.target.dataset && e.target.dataset.field;
     if (!field) return;
     // Title/notes/link/due already autosave via 'input' above (a date
@@ -652,8 +683,14 @@ function renderList(tasks, settings, today) {
 function renderProjects() {
   if (openProjectId) {
     const project = getTask(openProjectId);
-    if (project && project.chip) return renderProjectDetail(project);
-    openProjectId = null; // stale or deleted, fall through to the list
+    // Only requiring "project exists and isn't itself someone's step" (not
+    // requiring .chip specifically) is deliberate: openProjectId only ever
+    // gets set by opening an actual project, so trust that over a .chip
+    // field that could in principle go missing for a moment from a sync
+    // hiccup. Bouncing back to the project list on that alone is exactly
+    // what looked like "the project disappeared" after adding a step.
+    if (project && !project.deletedAt && !project.projectId) return renderProjectDetail(project);
+    openProjectId = null; // genuinely gone (deleted, or never existed)
   }
 
   const projects = getProjectList();
@@ -731,10 +768,11 @@ function renderProjects() {
 function renderProjectDetail(project) {
   const steps = getSteps(project.id);
   const prog = projectProgress(project.id);
+  const chip = project.chip || { nickname: '(untitled project)', color: '#999' };
   const wrap = el(`
     <section class="tabpanel">
       <button type="button" id="backToProjects" class="back-link">&larr; All projects</button>
-      <h2><span class="project-dot" style="background:${esc(project.chip.color)}"></span> ${esc(project.chip.nickname)}: ${esc(project.title)}</h2>
+      <h2><span class="project-dot" style="background:${esc(chip.color)}"></span> ${esc(chip.nickname)}: ${esc(project.title)}</h2>
       <p class="hint">${prog.done} of ${prog.total} steps done</p>
 
       <div class="cards">
@@ -1027,6 +1065,23 @@ onSyncStatus((status, detail) => {
 attachGlobalDelegation();
 render();
 startBackgroundSync();
+
+// If the phone locks or the app gets backgrounded while a note/title edit
+// is still sitting in its 600ms debounce window, that timer can be
+// suspended by the OS and never fire, which is genuine data loss, not
+// just a display lag: the text was never written to local storage at
+// all. Flushing on the two events that fire right before that happens
+// closes the gap: whatever was last typed is saved to this device before
+// it goes to sleep, and a best-effort sync push goes out immediately
+// rather than waiting for the normal debounce.
+function flushBeforeBackground_() {
+  flushPendingFieldEdits();
+  syncNow();
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') flushBeforeBackground_();
+});
+window.addEventListener('pagehide', flushBeforeBackground_);
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js').catch(() => {});

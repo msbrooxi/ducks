@@ -109,6 +109,13 @@ hr.day-sep { border: none; border-top: 1px solid var(--border); margin: 14px 0 0
 .ducks-picker button.sel { border-color: var(--accent); background: var(--chip-bg); }
 button.danger { color: var(--danger); border-color: var(--danger); background: transparent; }
 
+.save-row { display: flex; align-items: center; gap: 10px; }
+.save-btn {
+  padding: 9px 20px; border-radius: 8px; border: none;
+  background: var(--accent); color: white; font-weight: 700;
+}
+.save-confirm { font-size: 0.85rem; color: var(--accent); font-weight: 600; }
+
 /* The muted filter has to live on the base layer itself, not the shared
    parent: a CSS filter on a container is composited over its whole
    subtree, so a child's own "filter: none" can't cancel a parent's filter.

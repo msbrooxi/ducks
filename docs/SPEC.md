@@ -291,6 +291,44 @@ try the real current files first when there's a connection, cache is
 purely an offline fallback now, never something that can go stale and
 quietly keep being served.
 
+**Round 3 (2026-10-01):** the debounced autosave's real remaining gap
+(flagged but not yet closed as of round 2): a 600ms debounce timer sitting
+in JS can be suspended by the OS when the phone locks or the app
+backgrounds, which never fires it, meaning the edit was never written to
+local storage at all, not even delayed, lost. Stephanie hit exactly this
+with notes/details that "weren't sticking." Fixed: `visibilitychange`
+(hidden) and `pagehide` listeners in `main.js` now flush any pending
+field edit immediately and fire a best-effort sync, so whatever was last
+typed is safe on this device before it goes to sleep, whether or not a
+push to Drive completes in time. Also added, since she asked directly
+for it as a trust/safety net on top of autosave: an explicit **Save**
+button in the task editor, which flushes, syncs, and shows a "Saved!"
+confirmation.
+
+Also round 3: a project's detail view (Projects tab) required
+`project.chip` to be truthy to stay open, which is less defensive than
+it should be; anything making that field transiently unavailable (not
+confirmed as an actual cause, but plausible given other sync edge cases
+tonight) would silently bounce back to the project list, which is
+exactly what "the project disappeared after I added a step" looks like
+from the outside. Relaxed to trust `openProjectId` (only ever set by
+actually opening a real project) over requiring `.chip` specifically,
+and `renderProjectDetail()` now has a safe fallback if `chip` is ever
+missing instead of a hard crash.
+
+Also round 3: **assigning an existing task to a project** (Stephanie
+flagged this as a real gap, project creation only let her add brand-new
+steps, not move something already on her list into a project). Details
+now has a "Project" picker for any non-project task, setting
+`projectId` + the next `order` within that project directly.
+
+**Open, unresolved as of round 3:** a report of creating four tasks (same
+description, different dates) and only the most recent surviving. No
+code path was found that would explain this (each quick-add creates its
+own uuid; nothing dedupes by title), but it wasn't reproduced either,
+only reasoned about. Needs the exported event log to actually diagnose
+rather than guess further.
+
 ## Build order
 0. **Test first:** throwaway Apps Script + Pages page. Stephanie tests from
    iPhone and a Samsung: write, read, kid submit. Stop and rethink if it fails.
