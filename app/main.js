@@ -3,16 +3,16 @@ import {
   getLocal, saveLocal, getConn, saveConn, isPastDue, ducksDayDate,
   logEvent, CATEGORIES, SIZES, nowIso,
   getProjectList, getSteps, projectProgress
-} from './store.js?v=2026-10-02.9';
-import { scheduleSync, syncNow, onSyncStatus, startBackgroundSync, exportEventLog } from './sync.js?v=2026-10-02.9';
-import { doNextList, minutesFilter, fiveDucksFill, sortForList, LIST_SORTS, DEFAULT_SORT_DIR, SORT_DIR_LABELS, isBlocked } from './rank.js?v=2026-10-02.9';
-import { playQuack, playParade } from './quack.js?v=2026-10-02.9';
-import { computeFirstDue, computeNextDue, FREQUENCIES, recurrenceLabel, WEEKDAY_NAMES, MONTH_NAMES } from './recurrence.js?v=2026-10-02.9';
+} from './store.js?v=2026-10-02.10';
+import { scheduleSync, syncNow, onSyncStatus, startBackgroundSync, exportEventLog } from './sync.js?v=2026-10-02.10';
+import { doNextList, minutesFilter, fiveDucksFill, sortForList, LIST_SORTS, DEFAULT_SORT_DIR, SORT_DIR_LABELS, isBlocked } from './rank.js?v=2026-10-02.10';
+import { playQuack, playParade } from './quack.js?v=2026-10-02.10';
+import { computeFirstDue, computeNextDue, FREQUENCIES, recurrenceLabel, WEEKDAY_NAMES, MONTH_NAMES } from './recurrence.js?v=2026-10-02.10';
 
 // Bumped by hand on every shipped change. Shown in Settings so it's a
 // one-glance way to tell whether a device is actually running the latest
 // build, instead of guessing from a stale cached copy.
-const APP_BUILD = '2026-10-02.9';
+const APP_BUILD = '2026-10-02.10';
 
 let activeTab = 'home';
 let expandedTaskId = null;
@@ -249,6 +249,34 @@ function setDucks(id, ducks) {
 function deleteTask(id) {
   mutateTask(id, { deletedAt: nowIso(), status: 'active' }, 'deleted');
   if (expandedTaskId === id) expandedTaskId = null;
+}
+// Copies the task's basic shape (title/notes/link/due/ducks/size/category,
+// and its project slot if it's a step) into a fresh task, for the "same
+// task, tweaked per kid" case. Deliberately does NOT carry over status,
+// doingSince, completedAt, dependsOn, or recurrence: a clone is a new,
+// independent, active task, not a second instance of whatever state the
+// original happened to be in. Opens the clone's editor immediately since
+// the whole point is to go tweak it (the title especially) right away.
+function cloneTask(id) {
+  const t = getTask(id);
+  if (!t) return;
+  const clone = newTask({
+    title: t.title,
+    notes: t.notes,
+    link: t.link,
+    due: t.due,
+    ducks: t.ducks,
+    size: t.size,
+    category: t.category,
+    projectId: t.projectId,
+    order: t.projectId ? getSteps(t.projectId).length : null,
+    source: t.source
+  });
+  saveTask(clone);
+  logEvent('created', clone.id, { clonedFrom: id });
+  scheduleSync();
+  expandedTaskId = clone.id;
+  render();
 }
 function deleteProject(id) {
   const steps = getSteps(id);
@@ -536,7 +564,10 @@ function taskEditor(t) {
         <button data-action="explicitSave" data-id="${t.id}" class="save-btn">Save</button>
         <span class="save-confirm" id="saveConfirm-${t.id}"></span>
       </div>
-      <button data-action="delete" data-id="${t.id}" class="danger">Delete this task</button>
+      <div class="save-row">
+        <button data-action="clone" data-id="${t.id}">Clone this task</button>
+        <button data-action="delete" data-id="${t.id}" class="danger">Delete this task</button>
+      </div>
     </div>
   `;
 }
@@ -567,6 +598,7 @@ function attachGlobalDelegation() {
     else if (action === 'start') startTask(id);
     else if (action === 'expand') { expandedTaskId = expandedTaskId === id ? null : id; render(); }
     else if (action === 'delete') deleteTask(id);
+    else if (action === 'clone') cloneTask(id);
     else if (action === 'deleteProject') deleteProject(id);
     else if (action === 'restore') restoreTask(id);
     else if (action === 'reopen') reopenTask(id);
@@ -960,6 +992,7 @@ function createTemplateFromProject(projectId) {
     id: uuid_(),
     name,
     steps: steps.map((s) => ({
+      key: uuid_(), // see note on templateDraftSteps below: what propagation matches on
       title: s.title,
       dayOffset: dayOffsetFrom_(s.due),
       hasDue: !!s.due,
@@ -999,6 +1032,69 @@ function editTemplate(id) {
   templateDraftName = template.name;
   // Deep copy so cancelling an edit never mutates the saved template.
   templateDraftSteps = template.steps.map((s) => Object.assign({}, s, { dependsOnIdx: (s.dependsOnIdx || []).slice() }));
+  render();
+}
+
+// Applies a template's CURRENT step definitions to every project previously
+// created from it, matched up by each step's stable `key` (stored as
+// templateStepKey on the real task, see wireTemplatePicker_). A step that
+// matches gets its title/ducks/size/category/due synced to the template
+// (due recomputed from the project's own templateStartDate, so an
+// in-progress project's own start date is respected even though "today" has
+// moved on). A step newly added to the template since that project was made
+// gets created fresh. A step removed from the template is deliberately left
+// alone: auto-deleting a real task because a template definition shrank is
+// more destructive than this feature should be, especially if she's already
+// done work on it.
+function propagateTemplateEdit_(template) {
+  const projects = getTaskList().filter((t) => t.chip && !t.projectId && t.fromTemplateId === template.id);
+  if (!projects.length) return;
+  let updatedSteps = 0, addedSteps = 0;
+
+  projects.forEach((project) => {
+    const steps = getSteps(project.id);
+    const keyToRealId = {};
+    steps.forEach((s) => { if (s.templateStepKey) keyToRealId[s.templateStepKey] = s.id; });
+    const startDate = project.templateStartDate || null;
+    let nextOrder = steps.length;
+
+    template.steps.forEach((stepDef) => {
+      const due = (stepDef.hasDue && startDate) ? addDaysToDateStr(startDate, stepDef.dayOffset) : null;
+      const realId = keyToRealId[stepDef.key];
+      if (realId) {
+        const existing = getTask(realId);
+        if (existing) {
+          saveTask(touchTask(existing, {
+            title: stepDef.title, ducks: stepDef.ducks, size: stepDef.size, category: stepDef.category, due
+          }));
+          updatedSteps++;
+        }
+      } else {
+        const s = newTask({
+          title: stepDef.title, projectId: project.id, order: nextOrder++,
+          due, ducks: stepDef.ducks, size: stepDef.size, category: stepDef.category,
+          fromTemplateId: template.id, templateStepKey: stepDef.key
+        });
+        saveTask(s);
+        logEvent('created', s.id, { step: true, projectId: project.id, propagatedFromTemplate: template.id });
+        keyToRealId[stepDef.key] = s.id;
+        addedSteps++;
+      }
+    });
+
+    // Second pass once every step (old and newly-added) has a real id.
+    template.steps.forEach((stepDef) => {
+      if (!stepDef.dependsOnIdx || !stepDef.dependsOnIdx.length) return;
+      const realId = keyToRealId[stepDef.key];
+      if (!realId) return;
+      const dependsOn = stepDef.dependsOnIdx.map((j) => keyToRealId[template.steps[j].key]).filter(Boolean);
+      if (!dependsOn.length) return;
+      saveTask(touchTask(getTask(realId), { dependsOn }));
+    });
+  });
+
+  scheduleSync();
+  alert(`Applied to ${projects.length} existing project${projects.length > 1 ? 's' : ''}: ${updatedSteps} step${updatedSteps === 1 ? '' : 's'} updated, ${addedSteps} new step${addedSteps === 1 ? '' : 's'} added.`);
   render();
 }
 
@@ -1072,6 +1168,12 @@ function wireTemplateBuilder_(wrap) {
       const depsSelect = container.querySelector('#tplStepDeps');
       const dependsOnIdx = depsSelect ? Array.from(depsSelect.selectedOptions).map((o) => Number(o.value)) : [];
       templateDraftSteps.push({
+        // A stable id for this step that survives edits (unlike its array
+        // position, which can shift if steps are added/removed/reordered
+        // later). This is what lets "apply this edit to projects I already
+        // made from this template" match a template step back to the real
+        // task it previously produced.
+        key: uuid_(),
         title,
         dayOffset: Number(container.querySelector('#tplStepOffset').value) || 0,
         ducks: container.querySelector('#tplStepDucks').value ? Number(container.querySelector('#tplStepDucks').value) : null,
@@ -1113,9 +1215,19 @@ function wireTemplateBuilder_(wrap) {
       templateDraftName = '';
       templateDraftSteps = [];
       templateDraftEditingId = null;
-      alert(isEditing
-        ? `Updated "${name}", now ${steps.length} step${steps.length > 1 ? 's' : ''}. Projects already made from it aren't affected.`
-        : `Saved template "${name}" with ${steps.length} step${steps.length > 1 ? 's' : ''}. Nothing was added to your task list, use "+ New project from template" when you're ready to actually start one.`);
+      if (isEditing) {
+        const existingProjectCount = getTaskList().filter((t) => t.chip && !t.projectId && t.fromTemplateId === template.id).length;
+        if (existingProjectCount > 0 && confirm(
+          `Updated "${name}". Apply this change to the ${existingProjectCount} project${existingProjectCount > 1 ? 's' : ''} ` +
+          `already made from this template too? Matching steps get updated (title/ducks/size/category/due), new steps get added. ` +
+          `A step you removed from the template is left alone either way, nothing gets auto-deleted.\n\n` +
+          `OK = update those projects now. Cancel = only new uses of the template from here on.`
+        )) {
+          propagateTemplateEdit_(template);
+        }
+      } else {
+        alert(`Saved template "${name}" with ${steps.length} step${steps.length > 1 ? 's' : ''}. Nothing was added to your task list, use "+ New project from template" when you're ready to actually start one.`);
+      }
       render();
     });
     container.querySelector('#tplCancelTemplate').addEventListener('click', () => {
@@ -1203,7 +1315,18 @@ function wireTemplatePicker_(wrap) {
       alert('Pick a template and give the new project a title and nickname.');
       return;
     }
-    const project = newTask({ title, size: 'XL', chip: { nickname, color: colorBtn.dataset.color } });
+    // fromTemplateId + templateStartDate on the project, and fromTemplateId
+    // + templateStepKey on each step, are what later let "update projects
+    // already made from this template" (see propagateTemplateEdit_) find
+    // its way back to these exact tasks and recompute their due dates from
+    // the same start date. They're write-once metadata, never edited again
+    // after creation, so they're deliberately NOT in CORE_FIELDS/Code.gs's
+    // per-field merge list: a field only needs that protection if two
+    // devices might race to change it, and nothing ever changes these.
+    const project = newTask({
+      title, size: 'XL', chip: { nickname, color: colorBtn.dataset.color },
+      fromTemplateId: template.id, templateStartDate: startDate || null
+    });
     saveTask(project);
     logEvent('created', project.id, { project: true, fromTemplate: template.id });
     // Create every step first so every one has a real id, THEN go back and
@@ -1219,7 +1342,9 @@ function wireTemplatePicker_(wrap) {
         due,
         ducks: stepDef.ducks,
         size: stepDef.size,
-        category: stepDef.category
+        category: stepDef.category,
+        fromTemplateId: template.id,
+        templateStepKey: stepDef.key
       });
       saveTask(step);
       logEvent('created', step.id, { step: true, projectId: project.id });

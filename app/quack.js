@@ -14,7 +14,7 @@
 // parallel bandpass filters tuned to duck-like formants (~700Hz, ~2200Hz),
 // recombined, and amplitude-modulated at ~140Hz for the buzzy texture.
 
-import { getLocal } from './store.js?v=2026-10-02.9';
+import { getLocal } from './store.js?v=2026-10-02.10';
 
 let ctx = null;
 function ctx_() {

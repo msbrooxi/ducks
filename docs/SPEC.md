@@ -636,6 +636,38 @@ in the manage-templates list loads it back into the same builder
 place by id rather than creating a duplicate; projects already made from
 it before the edit are untouched, they're independent real tasks by then.
 
+**Round 13 (2026-10-02): template edit propagation, and cloning a task.**
+
+**Propagate a template edit to existing projects, or not.** Each template
+step now carries a stable `key` (assigned once, never regenerated, even
+across edits, via `editTemplate()`'s deep copy), and instantiating a
+template (`wireTemplatePicker_`) tags the project with `fromTemplateId` +
+`templateStartDate` and each step with `fromTemplateId` + `templateStepKey`.
+These are deliberately NOT added to CORE_FIELDS/Code.gs's per-field merge
+list: they're write-once at creation and never edited again, so they don't
+need that protection, and skipping it avoids a Code.gs redeploy for this
+round. Saving an edit to a template she's editing (not creating fresh) now
+asks, via `confirm()`, whether to apply the change to every project already
+made from it. Yes runs `propagateTemplateEdit_()`: for each such project,
+every template step is matched to its real task by `templateStepKey`; a
+match gets title/ducks/size/category/due synced to the template (due
+recomputed from that PROJECT's own `templateStartDate`, not today, so an
+in-progress project's actual start date is respected); a step with no match
+(added to the template since) gets created fresh; a step removed from the
+template is left alone, never auto-deleted. Dependencies propagate too, in
+a second pass once every step (old and newly-added) has a real id. Verified
+the whole matching/update/add/dependency-rewire algorithm with a standalone
+node simulation before wiring it into the UI.
+
+**Cloning a task.** "Clone this task" in the task editor, next to Delete.
+Copies title/notes/link/due/ducks/size/category and its project slot if
+it's a step, for the "one task, tweaked per kid" case (three similar tasks,
+one per child, instead of writing each from scratch). Deliberately does NOT
+carry over status, doingSince, completedAt, dependsOn, or recurrence: a
+clone is a new, independent, active task, not a second copy of whatever
+state the original was in. Opens the clone's own editor immediately since
+the point of cloning is to go tweak it.
+
 ## Build order
 0. **Test first:** throwaway Apps Script + Pages page. Stephanie tests from
    iPhone and a Samsung: write, read, kid submit. Stop and rethink if it fails.
