@@ -884,6 +884,37 @@ that's overdue" behavior. Verified with Playwright: filtering to a project
 alone, to "No project" alone, and to both together all produced the
 correct task set.
 
+**Round 22 (2026-10-02): a real quack sample, finally.** Three rounds of
+synthesizing the quack from raw oscillators and filtered noise never landed
+("awful," "a computerized rubber duckie") because there was never a way to
+actually listen to the result, only reason about it acoustically and tune
+from her verbal description, a genuinely lossy feedback loop. Stephanie
+supplied a real recording instead: `442820__qubodup__duck-quack.wav`, a
+CC-BY 3.0 remix (by Freesound user qubodup) of `20130403_duck.04.wav`
+(by Freesound user dobroide, also CC-BY 3.0). The source file actually
+contained three distinct quacks back to back (confirmed by plotting the
+amplitude envelope in 20ms windows: clear quack/silence/quack/silence/quack
+pattern at roughly 0-0.38s, 0.42-0.78s, 0.88-1.08s); per "let's use the
+first part of this," trimmed to just 0-0.40s (`audio/quack.wav`, the first
+quack plus its natural decay into near-silence, no artificial fade needed).
+
+`app/quack.js` now fetches and decodes that file once (kicked off at module
+load so it's ready before the first tap, not fetched on demand) and plays
+it via an `AudioBufferSourceNode` instead of synthesizing anything.
+`playParade()` plays the same sample three times with slightly different
+`playbackRate` values (close enough to a pitch-varied chorus from one
+source) followed by the same tonal flourish as before, that part was never
+what anyone complained about. Verified in a real browser: the fetch
+succeeds, `decodeAudioData` succeeds, both `playQuack()` and `playParade()`
+resolve without throwing, and completing a task through the actual UI
+triggers it cleanly.
+
+**CC-BY 3.0 requires attribution**, unlike the synthesized version's "no
+licensing question" (see v3's now-outdated comment in quack.js, corrected).
+Added a Credits section to `README.md` with both sounds' authors and
+Freesound links. `audio/quack.wav` added to `sw.js`'s offline precache list
+alongside everything else.
+
 ## Build order
 0. **Test first:** throwaway Apps Script + Pages page. Stephanie tests from
    iPhone and a Samsung: write, read, kid submit. Stop and rethink if it fails.

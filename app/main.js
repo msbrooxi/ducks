@@ -3,21 +3,21 @@ import {
   getLocal, saveLocal, getConn, saveConn, isPastDue, ducksDayDate,
   logEvent, CATEGORIES, SIZES, nowIso,
   getProjectList, getSteps, projectProgress
-} from './store.js?v=2026-10-02.18';
-import { scheduleSync, syncNow, onSyncStatus, startBackgroundSync, exportEventLog } from './sync.js?v=2026-10-02.18';
-import { doNextList, minutesFilter, fiveDucksFill, sortForList, LIST_SORTS, DEFAULT_SORT_DIR, SORT_DIR_LABELS, isBlocked } from './rank.js?v=2026-10-02.18';
-import { playQuack, playParade } from './quack.js?v=2026-10-02.18';
-import { computeFirstDue, computeNextDue, FREQUENCIES, recurrenceLabel, WEEKDAY_NAMES, MONTH_NAMES } from './recurrence.js?v=2026-10-02.18';
+} from './store.js?v=2026-10-02.19';
+import { scheduleSync, syncNow, onSyncStatus, startBackgroundSync, exportEventLog } from './sync.js?v=2026-10-02.19';
+import { doNextList, minutesFilter, fiveDucksFill, sortForList, LIST_SORTS, DEFAULT_SORT_DIR, SORT_DIR_LABELS, isBlocked } from './rank.js?v=2026-10-02.19';
+import { playQuack, playParade } from './quack.js?v=2026-10-02.19';
+import { computeFirstDue, computeNextDue, FREQUENCIES, recurrenceLabel, WEEKDAY_NAMES, MONTH_NAMES } from './recurrence.js?v=2026-10-02.19';
 import {
   createTemplateFromProject, editTemplate, deleteTemplate,
   renderTemplatePickerBody_, renderTemplateManageList_, renderTemplateBuilder_,
   wireTemplatePicker_, wireTemplateBuilder_, templateDraftIsOpen, templateBuilderSummary
-} from './templates.js?v=2026-10-02.18';
+} from './templates.js?v=2026-10-02.19';
 
 // Bumped by hand on every shipped change. Shown in Settings so it's a
 // one-glance way to tell whether a device is actually running the latest
 // build, instead of guessing from a stale cached copy.
-const APP_BUILD = '2026-10-02.18';
+const APP_BUILD = '2026-10-02.19';
 
 let activeTab = 'home';
 let expandedTaskId = null;
