@@ -592,6 +592,16 @@ bug, and project/intake polish.**
   project** via a new "Project" dropdown, instead of only being able to
   add steps from inside a project's own page.
 
+**Round 11 (2026-10-02): the duck meter's actual bug.** "6 done today still
+shows only 5 lit ducks" turned out to be real, not a stale build: Round 10
+changed `fiveDucksRow()` to grow one slot at a time past 5, but
+`fiveDucksFill()` still had `Math.min(5, count)` left over from before that
+change even existed, silently truncating any count above 5 back down to 5
+before the row ever saw it. Removed the cap: 5 is the floor the row never
+drops below, not a ceiling on what gets counted. Verified directly: 6
+completed tasks now produces `fill: 6`, `slots: 7`, 6 lit + 1 grey, matching
+what was asked for exactly.
+
 ## Build order
 0. **Test first:** throwaway Apps Script + Pages page. Stephanie tests from
    iPhone and a Samsung: write, read, kid submit. Stop and rethink if it fails.

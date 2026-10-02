@@ -2,7 +2,7 @@
 // meant to be easy to re-tune from Settings without touching this file's
 // shape (the numbers all come from the settings object).
 
-import { isPastDue, ducksDayDate } from './store.js?v=2026-10-02.7';
+import { isPastDue, ducksDayDate } from './store.js?v=2026-10-02.8';
 
 function daysUntil_(dueStr, today) {
   if (!dueStr) return Infinity;
@@ -188,8 +188,14 @@ export function sortForList(tasks, mode, direction = DEFAULT_SORT_DIR[mode] || '
 // nearly filled it alone), which was a deliberate design call at the time
 // but read as "the duck meter isn't properly filling" since it didn't match
 // the plain expectation of one duck lighting up per task checked off.
-// Simple count now: each of the first 5 tasks completed today fills one
-// duck, flat, no weighting.
+// Simple count now: each task completed today fills one duck, flat, no
+// weighting, and no cap: 5 is the daily floor the row always shows, not a
+// ceiling on what this returns. fiveDucksRow() in main.js is what grows
+// the row to fit whatever this reports, one duck past the actual count.
+// Capping it here at 5 (left over from the old weighted version, which
+// really did treat 5 as a hard max) silently truncated every count past 5
+// back down to 5, which is why 6 completed tasks still showed as "5
+// ducks" even after the row itself was changed to grow past 5.
 export function fiveDucksFill(tasks, today = ducksDayDate()) {
   let count = 0;
   for (const t of tasks) {
@@ -197,5 +203,5 @@ export function fiveDucksFill(tasks, today = ducksDayDate()) {
     if (ducksDayDate(new Date(t.completedAt)) !== today) continue;
     count += 1;
   }
-  return Math.min(5, count);
+  return count;
 }
