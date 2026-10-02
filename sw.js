@@ -9,7 +9,7 @@
 // a connection, it always tries the real, current files first, and the
 // cache is purely an offline fallback, not something that can go stale
 // and quietly keep serving.
-const CACHE = 'ducks-shell-v26';
+const CACHE = 'ducks-shell-v27';
 const SHELL = [
   './', './index.html', './manifest.webmanifest',
   './app/styles.css', './app/main.js', './app/store.js', './app/sync.js',

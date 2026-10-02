@@ -602,6 +602,40 @@ drops below, not a ceiling on what gets counted. Verified directly: 6
 completed tasks now produces `fill: 6`, `slots: 7`, 6 lit + 1 grey, matching
 what was asked for exactly.
 
+**Round 12 (2026-10-02): templates can now be built from scratch, with
+dependencies, and edited later.** Two real gaps, not bugs: the only way to
+make a template was to first build a real, live project (real tasks,
+really numbered, really on the List tab) and save it after the fact, which
+she didn't want for a template that's genuinely hypothetical until used;
+and there was no way to express a critical path (steps that must happen in
+order) vs. parallel tracks within a template at all.
+
+Added a "+ New template" builder on the Projects tab that exists entirely
+in memory (`templateDraftName`/`templateDraftSteps` in main.js) until
+"Save template" is clicked: nothing is written anywhere, let alone to the
+task list, before that. Each drafted step takes a title, a day offset from
+the eventual start date, ducks/size/category, and a "depends on" picker
+listing only the steps already added above it in the same draft (so
+ordering steps critical-path-first is how you express the dependency
+graph, there's no forward-reference). Stored as `dependsOnIdx`, positions
+within the template's own steps array, since real task ids don't exist
+until the template is actually used.
+
+On instantiation (`wireTemplatePicker_`'s create handler), every step is
+created first so each has a real id, then a second pass walks
+`dependsOnIdx` and writes real `dependsOn` arrays pointing at the right
+new tasks. `createTemplateFromProject` (the original save-an-existing-
+project-as-a-template path, kept for whoever already has a real example
+project handy) now captures the same `dependsOnIdx` shape from the real
+project's existing `dependsOn`, dropping any dependency that points
+outside the project (meaningless once reinstantiated elsewhere).
+
+Also added **editing a saved template**: "Edit" next to "Delete template"
+in the manage-templates list loads it back into the same builder
+(`editTemplate()`), and saving from an edit replaces that template in
+place by id rather than creating a duplicate; projects already made from
+it before the edit are untouched, they're independent real tasks by then.
+
 ## Build order
 0. **Test first:** throwaway Apps Script + Pages page. Stephanie tests from
    iPhone and a Samsung: write, read, kid submit. Stop and rethink if it fails.

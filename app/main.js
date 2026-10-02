@@ -3,16 +3,16 @@ import {
   getLocal, saveLocal, getConn, saveConn, isPastDue, ducksDayDate,
   logEvent, CATEGORIES, SIZES, nowIso,
   getProjectList, getSteps, projectProgress
-} from './store.js?v=2026-10-02.8';
-import { scheduleSync, syncNow, onSyncStatus, startBackgroundSync, exportEventLog } from './sync.js?v=2026-10-02.8';
-import { doNextList, minutesFilter, fiveDucksFill, sortForList, LIST_SORTS, DEFAULT_SORT_DIR, SORT_DIR_LABELS, isBlocked } from './rank.js?v=2026-10-02.8';
-import { playQuack, playParade } from './quack.js?v=2026-10-02.8';
-import { computeFirstDue, computeNextDue, FREQUENCIES, recurrenceLabel, WEEKDAY_NAMES, MONTH_NAMES } from './recurrence.js?v=2026-10-02.8';
+} from './store.js?v=2026-10-02.9';
+import { scheduleSync, syncNow, onSyncStatus, startBackgroundSync, exportEventLog } from './sync.js?v=2026-10-02.9';
+import { doNextList, minutesFilter, fiveDucksFill, sortForList, LIST_SORTS, DEFAULT_SORT_DIR, SORT_DIR_LABELS, isBlocked } from './rank.js?v=2026-10-02.9';
+import { playQuack, playParade } from './quack.js?v=2026-10-02.9';
+import { computeFirstDue, computeNextDue, FREQUENCIES, recurrenceLabel, WEEKDAY_NAMES, MONTH_NAMES } from './recurrence.js?v=2026-10-02.9';
 
 // Bumped by hand on every shipped change. Shown in Settings so it's a
 // one-glance way to tell whether a device is actually running the latest
 // build, instead of guessing from a stale cached copy.
-const APP_BUILD = '2026-10-02.8';
+const APP_BUILD = '2026-10-02.9';
 
 let activeTab = 'home';
 let expandedTaskId = null;
@@ -577,6 +577,7 @@ function attachGlobalDelegation() {
     else if (action === 'openProject') { openProjectId = id; activeTab = 'projects'; expandedTaskId = null; render(); }
     else if (action === 'saveTemplate') createTemplateFromProject(id);
     else if (action === 'deleteTemplate') deleteTemplate(id);
+    else if (action === 'editTemplate') editTemplate(id);
     else if (action === 'setDucks') setDucks(id, Number(btn.dataset.n));
     else if (action === 'snooze') {
       const when = btn.dataset.when;
@@ -873,6 +874,11 @@ function renderProjects() {
         <summary>+ New project from template</summary>
         ${renderTemplatePickerBody_()}
       </details>
+
+      <details class="new-project" ${templateDraftSteps.length ? 'open' : ''}>
+        <summary>${templateDraftEditingId ? '+ Editing template' : '+ New template (define from scratch, nothing added to your list until you use it)'}</summary>
+        <div id="tplBuilder">${renderTemplateBuilder_()}</div>
+      </details>
     </section>
   `);
 
@@ -907,6 +913,7 @@ function renderProjects() {
   });
 
   wireTemplatePicker_(wrap);
+  wireTemplateBuilder_(wrap);
 
   return wrap;
 }
@@ -958,13 +965,167 @@ function createTemplateFromProject(projectId) {
       hasDue: !!s.due,
       ducks: s.ducks,
       size: s.size,
-      category: s.category
+      category: s.category,
+      // Map each step's real dependsOn (task ids) to positions within this
+      // SAME steps array, so the dependency shape survives into the
+      // template. A dependency pointing outside this project can't mean
+      // anything once reinstantiated elsewhere, so it's dropped.
+      dependsOnIdx: (s.dependsOn || [])
+        .map((id) => steps.findIndex((x) => x.id === id))
+        .filter((idx) => idx !== -1)
     }))
   };
   const templates = getTemplates_().concat(template);
   saveTemplates_(templates);
   alert(`Saved "${name}" as a template with ${steps.length} step${steps.length > 1 ? 's' : ''}. Use "+ New project from template" on the Projects tab to reuse it.`);
   render();
+}
+
+// ---------- building a template from scratch, no live tasks involved ----------
+// Unlike createTemplateFromProject above (which reads an already-existing,
+// already-real project), this builds a template entirely in memory first:
+// nothing here is saved as a template, and definitely nothing is added to
+// the task list or numbered, until "Save template" is clicked. This is the
+// right tool when there's no reason to ever create a throwaway real
+// project just to turn it into a template.
+let templateDraftName = '';
+let templateDraftSteps = []; // [{ title, dayOffset, ducks, size, category, dependsOnIdx: [] }]
+let templateDraftEditingId = null; // set when editing an existing template in place, vs. creating a new one
+
+function editTemplate(id) {
+  const template = getTemplates_().find((t) => t.id === id);
+  if (!template) return;
+  templateDraftEditingId = id;
+  templateDraftName = template.name;
+  // Deep copy so cancelling an edit never mutates the saved template.
+  templateDraftSteps = template.steps.map((s) => Object.assign({}, s, { dependsOnIdx: (s.dependsOnIdx || []).slice() }));
+  render();
+}
+
+function renderTemplateBuilder_() {
+  const rows = templateDraftSteps.map((s, i) => `
+    <div class="card" style="padding:8px 10px">
+      <div class="card-title">#${i + 1} ${esc(s.title)}</div>
+      <div class="card-meta">
+        <span class="chip">day ${s.dayOffset >= 0 ? '+' : ''}${s.dayOffset}</span>
+        ${s.ducks ? `<span class="chip">${duckIcons(s.ducks, 14)}</span>` : ''}
+        ${s.size ? `<span class="chip">${sizeLabel(s.size)}</span>` : ''}
+        ${s.dependsOnIdx.length ? `<span class="chip blocked">after ${s.dependsOnIdx.map((j) => '#' + (j + 1)).join(', ')}</span>` : ''}
+      </div>
+      <div class="card-actions"><button type="button" data-action="removeTemplateDraftStep" data-idx="${i}" class="danger">Remove</button></div>
+    </div>
+  `).join('');
+
+  return `
+    <label>Template name
+      <input id="tplDraftName" value="${esc(templateDraftName)}" placeholder="e.g. Sell a house">
+    </label>
+    <div class="cards">${rows || '<p class="empty">No steps added yet.</p>'}</div>
+    <h3 style="margin-top:12px">Add a step</h3>
+    <label>Step title
+      <input id="tplStepTitle" placeholder="e.g. List on MLS">
+    </label>
+    <label>Due, as a day offset from the project's future start date (0 = start day; negative means before it, e.g. prep work)
+      <input id="tplStepOffset" type="number" value="0">
+    </label>
+    <label>Ducks
+      <select id="tplStepDucks">
+        <option value="">Not rated</option>
+        ${[1, 2, 3, 4, 5].map((n) => `<option value="${n}">${n} duck${n > 1 ? 's' : ''}</option>`).join('')}
+      </select>
+    </label>
+    <label>Duration
+      <select id="tplStepSize">
+        <option value="">Not set</option>
+        ${SIZES.map((s) => `<option value="${s.id}">${sizeLabel(s.id)}</option>`).join('')}
+      </select>
+    </label>
+    <label>Category
+      <select id="tplStepCategory">
+        ${CATEGORIES.map((c) => `<option value="${c.id}" ${c.id === 'admin' ? 'selected' : ''}>${c.label}</option>`).join('')}
+      </select>
+    </label>
+    ${templateDraftSteps.length ? `
+      <label>Depends on (must finish first; only steps already added above are pickable, so list critical-path steps before whatever comes after them)
+        <select id="tplStepDeps" multiple size="4">
+          ${templateDraftSteps.map((s, i) => `<option value="${i}">#${i + 1} ${esc(s.title)}</option>`).join('')}
+        </select>
+      </label>
+    ` : ''}
+    <button type="button" id="tplAddStep">Add step to template</button>
+    <div class="save-row" style="margin-top:12px">
+      <button type="button" id="tplSaveTemplate" class="save-btn">Save template</button>
+      <button type="button" id="tplCancelTemplate">Cancel</button>
+    </div>
+  `;
+}
+
+function wireTemplateBuilder_(wrap) {
+  const container = wrap.querySelector('#tplBuilder');
+  if (!container) return;
+
+  function wireInner_() {
+    container.querySelector('#tplAddStep').addEventListener('click', () => {
+      templateDraftName = container.querySelector('#tplDraftName').value;
+      const title = container.querySelector('#tplStepTitle').value.trim();
+      if (!title) { alert('Give the step a title.'); return; }
+      const depsSelect = container.querySelector('#tplStepDeps');
+      const dependsOnIdx = depsSelect ? Array.from(depsSelect.selectedOptions).map((o) => Number(o.value)) : [];
+      templateDraftSteps.push({
+        title,
+        dayOffset: Number(container.querySelector('#tplStepOffset').value) || 0,
+        ducks: container.querySelector('#tplStepDucks').value ? Number(container.querySelector('#tplStepDucks').value) : null,
+        size: container.querySelector('#tplStepSize').value || null,
+        category: container.querySelector('#tplStepCategory').value || 'admin',
+        dependsOnIdx
+      });
+      container.innerHTML = renderTemplateBuilder_();
+      wireInner_();
+    });
+    container.querySelectorAll('[data-action="removeTemplateDraftStep"]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const idx = Number(btn.dataset.idx);
+        templateDraftSteps.splice(idx, 1);
+        // Anything that depended on the removed step loses that one
+        // reference; anything referencing a step after it shifts down by
+        // one to stay pointed at the right row.
+        templateDraftSteps.forEach((s) => {
+          s.dependsOnIdx = s.dependsOnIdx.filter((j) => j !== idx).map((j) => (j > idx ? j - 1 : j));
+        });
+        container.innerHTML = renderTemplateBuilder_();
+        wireInner_();
+      });
+    });
+    container.querySelector('#tplSaveTemplate').addEventListener('click', () => {
+      const name = container.querySelector('#tplDraftName').value.trim();
+      if (!name) { alert('Give the template a name.'); return; }
+      if (!templateDraftSteps.length) { alert('Add at least one step first.'); return; }
+      const steps = templateDraftSteps.map((s) => Object.assign({ hasDue: true }, s));
+      // Editing keeps the same template id (so it's still the same row in
+      // the manage list, not a duplicate) but never touches any project
+      // already created from it, those are independent real tasks by now.
+      const isEditing = templateDraftEditingId && getTemplates_().some((t) => t.id === templateDraftEditingId);
+      const template = { id: isEditing ? templateDraftEditingId : uuid_(), name, steps };
+      const templates = isEditing
+        ? getTemplates_().map((t) => (t.id === template.id ? template : t))
+        : getTemplates_().concat(template);
+      saveTemplates_(templates);
+      templateDraftName = '';
+      templateDraftSteps = [];
+      templateDraftEditingId = null;
+      alert(isEditing
+        ? `Updated "${name}", now ${steps.length} step${steps.length > 1 ? 's' : ''}. Projects already made from it aren't affected.`
+        : `Saved template "${name}" with ${steps.length} step${steps.length > 1 ? 's' : ''}. Nothing was added to your task list, use "+ New project from template" when you're ready to actually start one.`);
+      render();
+    });
+    container.querySelector('#tplCancelTemplate').addEventListener('click', () => {
+      templateDraftName = '';
+      templateDraftSteps = [];
+      templateDraftEditingId = null;
+      render();
+    });
+  }
+  wireInner_();
 }
 
 function deleteTemplate(id) {
@@ -984,7 +1145,7 @@ function uuid_() {
 function renderTemplatePickerBody_() {
   const templates = getTemplates_();
   if (!templates.length) {
-    return '<p class="hint">No templates yet. Open a project with steps and use "Save as template" there to create one.</p>';
+    return '<p class="hint">No templates yet. Use "+ New template" below to build one from scratch (nothing gets added to your list), or open an existing project with steps and use "Save as template" there.</p>';
   }
   return `
     <label>Template
@@ -1012,7 +1173,10 @@ function renderTemplatePickerBody_() {
         <div class="card">
           <div class="card-title">${esc(t.name)}</div>
           <div class="card-meta"><span class="chip">${t.steps.length} step${t.steps.length > 1 ? 's' : ''}</span></div>
-          <div class="card-actions"><button data-action="deleteTemplate" data-id="${t.id}" class="danger">Delete template</button></div>
+          <div class="card-actions">
+            <button data-action="editTemplate" data-id="${t.id}">Edit</button>
+            <button data-action="deleteTemplate" data-id="${t.id}" class="danger">Delete template</button>
+          </div>
         </div>
       `).join('')}
     </div>
@@ -1042,7 +1206,11 @@ function wireTemplatePicker_(wrap) {
     const project = newTask({ title, size: 'XL', chip: { nickname, color: colorBtn.dataset.color } });
     saveTask(project);
     logEvent('created', project.id, { project: true, fromTemplate: template.id });
-    template.steps.forEach((stepDef, order) => {
+    // Create every step first so every one has a real id, THEN go back and
+    // wire up dependsOn from the template's dependsOnIdx (positions within
+    // the template, meaningless until each position has a real task behind
+    // it). realIds[i] is step i's actual task id.
+    const realIds = template.steps.map((stepDef, order) => {
       const due = (stepDef.hasDue && startDate) ? addDaysToDateStr(startDate, stepDef.dayOffset) : null;
       const step = newTask({
         title: stepDef.title,
@@ -1055,6 +1223,14 @@ function wireTemplatePicker_(wrap) {
       });
       saveTask(step);
       logEvent('created', step.id, { step: true, projectId: project.id });
+      return step.id;
+    });
+    template.steps.forEach((stepDef, i) => {
+      if (!stepDef.dependsOnIdx || !stepDef.dependsOnIdx.length) return;
+      const dependsOn = stepDef.dependsOnIdx.map((j) => realIds[j]).filter(Boolean);
+      if (!dependsOn.length) return;
+      const step = getTask(realIds[i]);
+      saveTask(touchTask(step, { dependsOn }));
     });
     scheduleSync();
     openProjectId = project.id;
