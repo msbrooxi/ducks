@@ -7,12 +7,12 @@ import {
 import { scheduleSync, syncNow, onSyncStatus, startBackgroundSync, exportEventLog } from './sync.js';
 import { doNextList, minutesFilter, fiveDucksFill, sortForList, LIST_SORTS, DEFAULT_SORT_DIR, SORT_DIR_LABELS, isBlocked } from './rank.js';
 import { playQuack, playParade } from './quack.js';
-import { computeFirstDue, computeNextDue, FREQUENCIES, recurrenceLabel } from './recurrence.js';
+import { computeFirstDue, computeNextDue, FREQUENCIES, recurrenceLabel, WEEKDAY_NAMES, MONTH_NAMES } from './recurrence.js';
 
 // Bumped by hand on every shipped change. Shown in Settings so it's a
 // one-glance way to tell whether a device is actually running the latest
 // build, instead of guessing from a stale cached copy.
-const APP_BUILD = '2026-10-02.4';
+const APP_BUILD = '2026-10-02.5';
 
 let activeTab = 'home';
 let expandedTaskId = null;
@@ -504,7 +504,7 @@ function taskEditor(t) {
       </div>
       <label>Depends on (must be done first)
         <select data-field="dependsOn" data-id="${t.id}" multiple size="4">
-          ${getTaskList().filter((o) => o.id !== t.id && !o.chip).map((o) => (
+          ${getTaskList().filter((o) => o.id !== t.id && !o.chip && o.status !== 'done').map((o) => (
             `<option value="${o.id}" ${(t.dependsOn || []).includes(o.id) ? 'selected' : ''}>#${o.seq ?? '?'} ${esc(o.title)}</option>`
           )).join('')}
         </select>
@@ -1134,6 +1134,30 @@ function renderDone(tasks) {
   `);
 }
 
+// The "+ New recurring task" day-selection fields change shape per
+// frequency: weekly/biweekly need a day-of-week picker, monthly/quarterly
+// need the existing 1-31 number input, annually needs both a month picker
+// and a day number. Swapped in via innerHTML when the frequency changes.
+function renderRecDayFields_(freqId) {
+  const f = FREQUENCIES.find((x) => x.id === freqId) || FREQUENCIES[0];
+  if (f.kind === 'weekday') {
+    return `<label>${f.dayHint}
+      <select id="recDay">${WEEKDAY_NAMES.map((name, i) => `<option value="${i}">${name}</option>`).join('')}</select>
+    </label>`;
+  }
+  if (f.kind === 'monthDay') {
+    return `<label>Month
+      <select id="recMonth">${MONTH_NAMES.map((name, i) => `<option value="${i + 1}">${name}</option>`).join('')}</select>
+    </label>
+    <label>${f.dayHint}
+      <input id="recDay" type="number" min="1" max="31" value="1">
+    </label>`;
+  }
+  return `<label>${f.dayHint}
+    <input id="recDay" type="number" min="1" max="31" value="1">
+  </label>`;
+}
+
 function renderSettings(settings) {
   const conn = getConn();
   const local = getLocal();
@@ -1192,9 +1216,7 @@ function renderSettings(settings) {
             ${FREQUENCIES.map((f) => `<option value="${f.id}">${f.label}</option>`).join('')}
           </select>
         </label>
-        <label id="recDayLabel">${FREQUENCIES[0].dayHint}
-          <input id="recDay" type="number" min="1" max="31" value="1">
-        </label>
+        <div id="recDayFields">${renderRecDayFields_(FREQUENCIES[0].id)}</div>
         <label>Ducks
           <select id="recDucks">
             <option value="">Not rated</option>
@@ -1241,17 +1263,26 @@ function renderSettings(settings) {
 
   const recFreq = wrap.querySelector('#recFreq');
   recFreq.addEventListener('change', () => {
-    const f = FREQUENCIES.find((x) => x.id === recFreq.value) || FREQUENCIES[0];
-    wrap.querySelector('#recDayLabel').firstChild.textContent = f.dayHint;
+    wrap.querySelector('#recDayFields').innerHTML = renderRecDayFields_(recFreq.value);
   });
   wrap.querySelector('#recCreate').addEventListener('click', () => {
     const title = wrap.querySelector('#recTitle').value.trim();
-    const day = Number(wrap.querySelector('#recDay').value);
-    if (!title || !day || day < 1 || day > 31) {
-      alert('Give it a title and a day number from 1 to 31.');
+    if (!title) {
+      alert('Give it a title.');
       return;
     }
-    const recurrence = { freq: recFreq.value, day };
+    const freqDef = FREQUENCIES.find((f) => f.id === recFreq.value) || FREQUENCIES[0];
+    const day = Number(wrap.querySelector('#recDay').value);
+    let recurrence;
+    if (freqDef.kind === 'weekday') {
+      recurrence = { freq: freqDef.id, day }; // 0-6, always valid from the <select>
+    } else if (freqDef.kind === 'monthDay') {
+      if (!day || day < 1 || day > 31) { alert('Give it a day of the month from 1 to 31.'); return; }
+      recurrence = { freq: freqDef.id, month: Number(wrap.querySelector('#recMonth').value), day };
+    } else {
+      if (!day || day < 1 || day > 31) { alert('Give it a day number from 1 to 31.'); return; }
+      recurrence = { freq: freqDef.id, day };
+    }
     const due = computeFirstDue(recurrence, ducksDayDate());
     const ducksVal = wrap.querySelector('#recDucks').value;
     const t = newTask({
@@ -1270,7 +1301,8 @@ function renderSettings(settings) {
     // read as "did that even save?") and so a second recurring task can't
     // be entered by accident with the first one's leftover values.
     wrap.querySelector('#recTitle').value = '';
-    wrap.querySelector('#recDay').value = '1';
+    recFreq.value = FREQUENCIES[0].id;
+    wrap.querySelector('#recDayFields').innerHTML = renderRecDayFields_(FREQUENCIES[0].id);
     wrap.querySelector('#recDucks').value = '';
     wrap.querySelector('#recSize').value = '';
     wrap.querySelector('#recCategory').value = 'money';

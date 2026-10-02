@@ -501,6 +501,28 @@ Also this round:
   untouched in the background won't see a phone's completion until you
   look at it again.
 
+**Round 8 (2026-10-02): more recurring frequencies, cleaner dependency
+picker.** GitHub Pages/the CDN in front of it can take a few minutes to
+roll out a push even after a hard refresh in a brand-new browser; this
+round needed no Code.gs redeploy, just that normal propagation delay.
+
+- **Dependency picker no longer lists already-done tasks.** It never made
+  sense to pick a finished task as a pre-req you're still waiting on;
+  `isBlocked()` already ignored done dependencies for ranking purposes, the
+  picker just hadn't caught up. One filter added in `taskEditor()`.
+- **Weekly, Every 2 weeks, and Annually added to recurring tasks**,
+  alongside the existing Monthly and Quarterly, listed in that increasing-
+  duration order. `recurrence.js`'s `FREQUENCIES` now carries a `kind`
+  (`weekday` / `dayOfMonth` / `monthDay`) that tells the Settings form
+  which fields to show: weekly/biweekly get a day-of-week picker (Sunday
+  through Saturday), annually gets a month picker plus a day-of-month
+  number, monthly/quarterly keep the existing single day number. Weekly
+  steps the due date forward 7 days at a time from whatever date was just
+  completed, biweekly 14; annually keeps the same month/day each year,
+  clamping Feb 29 to the 28th in a non-leap year the same way monthly
+  already clamps short months. Verified with direct node tests (weekly/
+  biweekly stepping, annual rollover, Feb 29 clamping) before shipping.
+
 ## Build order
 0. **Test first:** throwaway Apps Script + Pages page. Stephanie tests from
    iPhone and a Samsung: write, read, kid submit. Stop and rethink if it fails.
