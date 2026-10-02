@@ -375,6 +375,94 @@ the general class of "the screen said one thing, the data said another"
 that several of tonight's reports share, not confirmed as the exact
 mechanism for every one of them, but a real gap regardless.
 
+**Round 6 (2026-10-02): the backend merge bug, and a batch of direct asks.**
+Stephanie came back with 14 specific complaints after an overnight test
+pass. The most important one, by far:
+
+- **Completed tasks reverting to open/past-due days later.** Found a real
+  bug in `apps-script/Code.gs`'s `mergeTask_`: the per-field merge added in
+  Round 1 had an escape hatch for any task missing `fieldUpdatedAt`
+  entirely on either side (any task older than 2026-09-29, or one that
+  hadn't had a touched field since) that fell back to comparing whole-task
+  `updatedAt` and replacing the ENTIRE record if the incoming one was
+  "newer". That's the original whole-task-overwrite bug, still alive for
+  exactly the older tasks most likely to have a completion history worth
+  protecting: complete a task on the phone, then make any unrelated edit
+  on a laptop that still has a stale pre-completion copy of that same old
+  task (it hadn't pulled the completion yet), and the laptop's newer
+  `updatedAt` would blow away the phone's completion, status and all, the
+  next time it synced. Fixed by adding `ensureFieldUpdatedAt_()`, which
+  backfills any missing per-field timestamp from the task's own
+  `updatedAt`/`createdAt` (mirroring the client's `backfillFieldUpdatedAt`
+  in store.js) before every merge, so the per-field comparison is always
+  what actually runs and the whole-record fallback is gone entirely.
+  **This requires redeploying Code.gs** (paste the new version into the
+  Apps Script editor and redeploy), unlike recent rounds.
+
+Other fixes this round:
+- **Quack still sounded wrong** ("awful", "computerized rubber duckie").
+  Rewrote `quack.js` from scratch (v3): a buzzy sawtooth source with a fast
+  downward pitch glide (the piece that actually reads as a quack rather
+  than a tone), split through two parallel bandpass filters tuned to
+  duck-like formants (~700Hz, ~2200Hz), a ~135Hz tremolo for the rough
+  buzzy texture, and a short noise "chuff" at the onset for the breathy
+  attack.
+- **Recurring tasks seeming to vanish / one overwriting another.** No bug
+  found in the creation path itself (each gets its own uuid, there's no
+  code path that overwrites one with another), but the merge bug above is
+  a plausible contributor for any pre-existing recurring task, and the
+  "+ New recurring task" form didn't reset after creating, which read as
+  "did that even save?" Now clears itself and shows a confirmation naming
+  the first due date, so a save is never ambiguous.
+- **Duck-meter.** `fiveDucksFill()` used to weight each completed task by
+  t-shirt size (an XS task barely moved it, an XL task nearly filled it
+  alone) rather than count tasks, which didn't match the plain
+  expectation of "one duck per completed task" stated directly. Changed to
+  a flat count of today's completions, capped at 5. **Judgment call:**
+  this is a real design change, not just a bug fix, flagged here in case
+  the weighted version was actually wanted once explained.
+- **Bottom nav order:** Home, List, Done, Inbox, Projects, Settings
+  (was Home, Inbox, List, Projects, Done, Settings).
+- **Date field calendar icon invisible in dark mode:** the browser's
+  built-in icon on `<input type="date">` has no color property of its own;
+  `::-webkit-calendar-picker-indicator { filter: invert(...) }` now
+  lightens it in dark mode and keeps it readable in light mode.
+- **Project colors:** expanded from 6 to 16 (8 primaries + 8 pastel
+  versions of the same hues), with `.color-picker` now wrapping instead of
+  overflowing.
+- **Project setup now asks for due date, ducks, and category up front**
+  (title/nickname/color already did), so a project doesn't have to be
+  edited immediately after creating it just to fill in what could have
+  been asked at setup.
+- **Project templates:** new feature. A project's steps can be saved as a
+  reusable template (`createTemplateFromProject`) that records each step's
+  title plus a day-offset from the earliest dated step, rather than fixed
+  dates. "+ New project from template" on the Projects tab asks for a new
+  title/nickname/color/start date and recreates every step with its due
+  date shifted to match, for the realtor's "same ten steps, different
+  house" case. Templates live in settings (`settings.templates`), synced
+  like any other setting, not stored as tasks.
+- **Home's "Do next" list: 3 slots to 5.** `doNextList()` took a `count`
+  parameter (default 5, was hardcoded 3); no caller needed to change.
+- **Past-due date edits not visibly sticking.** The actual save was
+  already landing (confirmed by tracing `scheduleFieldSave`), but nothing
+  re-rendered the screen once the debounce settled unless something
+  unrelated happened to trigger a render afterward, so a card could sit
+  showing its old past-due state indefinitely even though the new date
+  was already saved, reading as "it reverted." Due-date saves (not
+  title/notes/link, which could still be mid-typing elsewhere) now trigger
+  a render once their 600ms debounce actually commits.
+- **"Start" / "doing now" showing only sometimes, project view
+  disappearing after adding a step, the project not showing up in a task's
+  project dropdown:** traced through the current code for each and found
+  it should already work correctly (the project-view fix from Round 4 is
+  in place, the dropdown reads live data, doing-now is unconditional once
+  `doingSince` is set). Most likely explanation is the same stale-screen
+  class of bug fixed in Round 5, combined with the backend merge bug above
+  for anything involving two devices. Noted here rather than guessed at
+  further; worth a direct retest on this build before assuming anything
+  new is wrong.
+
 ## Build order
 0. **Test first:** throwaway Apps Script + Pages page. Stephanie tests from
    iPhone and a Samsung: write, read, kid submit. Stop and rethink if it fails.

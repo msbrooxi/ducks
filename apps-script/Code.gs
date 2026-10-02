@@ -20,6 +20,13 @@ var DATA_FILE = 'ducks-data.json';
 var EVENTS_FILE = 'ducks-events.json';
 var MAX_EVENTS_RETURNED = 500;
 
+// Keep this in sync with app/store.js's CORE_FIELDS.
+var CORE_FIELDS = [
+  'title', 'notes', 'link', 'ducks', 'due', 'size', 'category',
+  'status', 'doingSince', 'completedAt', 'deletedAt',
+  'recurrence', 'projectId', 'order', 'chip', 'dependsOn'
+];
+
 var DEFAULT_SETTINGS = {
   rankSlider: 50,
   dueSoonDays: 3,
@@ -113,34 +120,55 @@ function handleSync_(body) {
   });
 }
 
-// Per-field merge (added 2026-09-29, replacing whole-task merge). The old
+// A task is missing a per-field timestamp for a field either because it
+// predates per-field merge entirely (no fieldUpdatedAt object at all) or
+// because it was touched before some specific field was added to
+// CORE_FIELDS. Either way, stamp every missing field with the task's own
+// updatedAt/createdAt rather than leaving it undefined, mirroring the
+// client's own backfillFieldUpdatedAt in store.js. Mutates and returns the
+// same task object.
+function ensureFieldUpdatedAt_(task) {
+  var ts = task.updatedAt || task.createdAt || new Date().toISOString();
+  var fu = task.fieldUpdatedAt || {};
+  for (var i = 0; i < CORE_FIELDS.length; i++) {
+    var f = CORE_FIELDS[i];
+    if (!fu[f]) fu[f] = ts;
+  }
+  task.fieldUpdatedAt = fu;
+  return task;
+}
+
+// Per-field merge (added 2026-09-29, revised 2026-10-02). The original
 // version replaced the entire task whenever incoming.updatedAt was newer,
 // which meant: rate ducks on the phone, then edit the category on the
 // laptop before the laptop had pulled that rating, and the laptop's stale
 // copy of "ducks" would overwrite the phone's newer rating even though the
-// laptop never touched that field. Merging field by field, using each
-// field's own timestamp, fixes that: a field only gets overwritten by an
-// edit that is actually newer for that specific field.
+// laptop never touched that field. Per-field timestamps fixed most of that,
+// but kept a dangerous escape hatch: whenever EITHER side's fieldUpdatedAt
+// was missing entirely (any task that predates 2026-09-29 and hasn't had
+// every field touched since), it fell back to comparing whole-task
+// updatedAt and replacing the ENTIRE record. That's the same bug back from
+// the dead for exactly those older tasks: complete a task on the phone,
+// then make any unrelated edit on a laptop that still has a stale
+// pre-completion copy of that same old task (because the laptop hadn't
+// pulled the completion yet), and the laptop's newer updatedAt would blow
+// away the phone's completion, status and all, the moment it synced. This
+// is the most likely explanation for completed tasks reappearing as open
+// and past due days later. Fixed by never leaving fieldUpdatedAt missing:
+// both sides get backfilled before merging, so the per-field comparison
+// below is always what actually runs, with no whole-record fallback.
 function mergeTask_(tasksById, incoming) {
   if (!incoming || !incoming.id) return;
+  ensureFieldUpdatedAt_(incoming);
   var existing = tasksById[incoming.id];
   if (!existing) {
     tasksById[incoming.id] = incoming;
     return;
   }
+  ensureFieldUpdatedAt_(existing);
 
   var incomingFU = incoming.fieldUpdatedAt;
   var existingFU = existing.fieldUpdatedAt;
-
-  // A task synced before this fix has no fieldUpdatedAt on one side or the
-  // other. Fall back to the old whole-record behavior just for that one
-  // record rather than guessing.
-  if (!incomingFU || !existingFU) {
-    if (!existing.updatedAt || incoming.updatedAt > existing.updatedAt) {
-      tasksById[incoming.id] = incoming;
-    }
-    return;
-  }
 
   var merged = Object.assign({}, existing);
   var mergedFU = Object.assign({}, existingFU);

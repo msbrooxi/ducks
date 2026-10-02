@@ -52,7 +52,7 @@ function byId_(tasks) {
   return map;
 }
 
-export function doNextList(tasks, settings, today = ducksDayDate()) {
+export function doNextList(tasks, settings, today = ducksDayDate(), count = 5) {
   const byId = byId_(tasks);
   // A project "head" task (has a chip) is a container, not something to do
   // directly, so it never appears in Do Next; only its steps do. A blocked
@@ -64,11 +64,11 @@ export function doNextList(tasks, settings, today = ducksDayDate()) {
   const slots = [];
   const used = new Set();
   for (const t of pastDue) {
-    if (slots.length >= 3) break;
+    if (slots.length >= count) break;
     slots.push(t); used.add(t.id);
   }
 
-  if (slots.length < 3) {
+  if (slots.length < count) {
     const notPastDue = active.filter((t) => !used.has(t.id) && !isPastDue(t, today));
     const lanes = [
       (t) => isDueSoon_(t, settings, today) && !isPastDue(t, today),
@@ -76,18 +76,18 @@ export function doNextList(tasks, settings, today = ducksDayDate()) {
       (t) => isQuickWin_(t, settings)
     ];
     for (const laneFn of lanes) {
-      if (slots.length >= 3) break;
+      if (slots.length >= count) break;
       const candidates = notPastDue.filter((t) => laneFn(t) && !used.has(t.id))
         .sort((a, b) => score(b, settings, today) - score(a, settings, today));
       if (candidates[0]) { slots.push(candidates[0]); used.add(candidates[0].id); }
     }
   }
 
-  if (slots.length < 3) {
+  if (slots.length < count) {
     const rest = active.filter((t) => !used.has(t.id))
       .sort((a, b) => score(b, settings, today) - score(a, settings, today));
     for (const t of rest) {
-      if (slots.length >= 3) break;
+      if (slots.length >= count) break;
       slots.push(t); used.add(t.id);
     }
   }
@@ -147,13 +147,19 @@ export function sortForList(tasks, mode) {
   return list;
 }
 
-export function fiveDucksFill(tasks, settings, today = ducksDayDate()) {
-  const weights = settings.duckFillWeights || { S: 0.25, M: 0.5, L: 0.75, XL: 1 };
-  let total = 0;
+// Revised 2026-10-02: this used to weight each completed task's contribution
+// by its t-shirt size (a quick XS task barely moved the meter, an XL task
+// nearly filled it alone), which was a deliberate design call at the time
+// but read as "the duck meter isn't properly filling" since it didn't match
+// the plain expectation of one duck lighting up per task checked off.
+// Simple count now: each of the first 5 tasks completed today fills one
+// duck, flat, no weighting.
+export function fiveDucksFill(tasks, today = ducksDayDate()) {
+  let count = 0;
   for (const t of tasks) {
     if (t.status !== 'done' || !t.completedAt) continue;
     if (ducksDayDate(new Date(t.completedAt)) !== today) continue;
-    total += weights[t.size || 'L'] ?? weights.L;
+    count += 1;
   }
-  return Math.min(5, total);
+  return Math.min(5, count);
 }

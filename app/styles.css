@@ -56,6 +56,20 @@ body {
   border: 1px solid var(--border); background: var(--card-bg); color: var(--text);
   font-size: 0.82rem;
 }
+/* The browser's built-in calendar icon on <input type="date"> is a dark
+   glyph with no way to recolor it directly. In light mode it's fine on a
+   white field; in dark mode (var(--card-bg) is near-black) it was nearly
+   invisible. invert() flips it to light-on-dark; the light-mode override
+   cancels that back out so it isn't inverted twice there. */
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.55);
+  cursor: pointer;
+}
+@media (prefers-color-scheme: dark) {
+  input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: invert(0.9);
+  }
+}
 .quickadd-extra button {
   padding: 8px 16px; border-radius: 8px; border: none;
   background: var(--accent); color: white; font-weight: 600;
@@ -167,7 +181,7 @@ button.danger { color: var(--danger); border-color: var(--danger); background: t
 .project-chip {
   color: white; border: none; font-weight: 600; cursor: pointer;
 }
-.color-picker { display: flex; gap: 8px; margin: 6px 0 4px; }
+.color-picker { display: flex; gap: 8px; margin: 6px 0 4px; flex-wrap: wrap; }
 .color-picker button {
   width: 30px; height: 30px; border-radius: 50%; border: 2px solid transparent;
   padding: 0;

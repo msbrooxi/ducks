@@ -12,7 +12,7 @@ import { computeFirstDue, computeNextDue, FREQUENCIES, recurrenceLabel } from '.
 // Bumped by hand on every shipped change. Shown in Settings so it's a
 // one-glance way to tell whether a device is actually running the latest
 // build, instead of guessing from a stale cached copy.
-const APP_BUILD = '2026-10-02.2';
+const APP_BUILD = '2026-10-02.3';
 
 let activeTab = 'home';
 let expandedTaskId = null;
@@ -31,7 +31,13 @@ let openProjectId = null;
 let frozenListOrder = null;
 let frozenListForTaskId = null;
 
-const PROJECT_COLORS = ['#3d5a80', '#9b5de5', '#e07a5f', '#2a9d8f', '#e63946', '#457b9d'];
+// 8 primaries/saturated colors, then 8 pastel versions of roughly the same
+// hues, so a project's color is easy to tell apart from its neighbors
+// whether she wants it bold or soft.
+const PROJECT_COLORS = [
+  '#e63946', '#f4a300', '#2a9d8f', '#3d5a80', '#457b9d', '#9b5de5', '#e07a5f', '#2b2d42',
+  '#f7b2b7', '#fcd29f', '#a8dad5', '#aebfd6', '#a9c6da', '#d0b3f0', '#f3c6b8', '#c2c4d6'
+];
 
 const app = document.getElementById('app');
 
@@ -138,6 +144,18 @@ function flushPendingFieldEdits() {
   if (keys.length > 0) scheduleSync();
 }
 
+// Fields whose debounced save should trigger a re-render once it actually
+// commits (600ms after the last keystroke). Title/notes/link deliberately
+// do NOT: she could still be typing in them, or another field, when this
+// fires, and a render would tear down and rebuild those inputs out from
+// under her. "due" is different: it's a single discrete value (not
+// free-flowing text), and it changes which section a card lives in (past
+// due vs. not) and how the list sorts. Without this, a due-date edit saved
+// correctly but the screen just kept showing the old state until something
+// unrelated happened to trigger another render, e.g. switching tabs,
+// reading as "the date change didn't stick" even though it had.
+const RENDER_AFTER_COMMIT_FIELDS = new Set(['due']);
+
 function scheduleFieldSave(id, field, value) {
   const key = id + ':' + field;
   pendingFieldValues[key] = { id, field, value };
@@ -152,6 +170,7 @@ function scheduleFieldSave(id, field, value) {
     saveTask(touchTask(t, { [pending.field]: pending.value }));
     logEvent('edited', pending.id, { field: pending.field, to: pending.value });
     scheduleSync();
+    if (RENDER_AFTER_COMMIT_FIELDS.has(pending.field)) render();
   }, 600);
 }
 
@@ -199,7 +218,7 @@ function completeTask(id) {
   }
 
   const settings = getSettings();
-  const whole = Math.floor(fiveDucksFill(getTaskList(), settings));
+  const whole = Math.floor(fiveDucksFill(getTaskList()));
   if (whole >= 5 && lastFiveDucksWhole < 5) {
     setTimeout(() => playParade(), 250);
   }
@@ -278,7 +297,7 @@ function render() {
   app.appendChild(body);
   app.appendChild(renderNav());
 
-  const fill = fiveDucksFill(tasks, settings, today);
+  const fill = fiveDucksFill(tasks, today);
   lastFiveDucksWhole = Math.floor(fill);
 }
 
@@ -326,8 +345,8 @@ function renderHeader() {
 
 function renderNav() {
   const tabs = [
-    ['home', '🏠 Home'], ['inbox', '📥 Inbox'], ['list', '📋 List'],
-    ['projects', '🗂️ Projects'], ['done', '✅ Done'], ['settings', '⚙️ Settings']
+    ['home', '🏠 Home'], ['list', '📋 List'], ['done', '✅ Done'],
+    ['inbox', '📥 Inbox'], ['projects', '🗂️ Projects'], ['settings', '⚙️ Settings']
   ];
   const nav = el(`<nav class="tabs">${tabs.map(([id, label]) => (
     `<button data-tab="${id}" class="${activeTab === id ? 'active' : ''}">${label}</button>`
@@ -354,7 +373,7 @@ function fiveDucksRow(fill) {
 }
 
 function renderHome(tasks, settings, today) {
-  const fill = fiveDucksFill(tasks, settings, today);
+  const fill = fiveDucksFill(tasks, today);
   const next = doNextList(tasks, settings, today);
   const wrap = el(`
     <section class="tabpanel">
@@ -536,6 +555,8 @@ function attachGlobalDelegation() {
       mutateTask(id, { recurrence: null }, 'edited', { field: 'recurrence', to: null });
     }
     else if (action === 'openProject') { openProjectId = id; activeTab = 'projects'; expandedTaskId = null; render(); }
+    else if (action === 'saveTemplate') createTemplateFromProject(id);
+    else if (action === 'deleteTemplate') deleteTemplate(id);
     else if (action === 'setDucks') setDucks(id, Number(btn.dataset.n));
     else if (action === 'snooze') {
       const when = btn.dataset.when;
@@ -698,7 +719,7 @@ function renderList(tasks, settings, today) {
   frozenListOrder = rest.map((t) => t.id);
   frozenListForTaskId = expandedTaskId;
 
-  const fill = fiveDucksFill(tasks, settings, today);
+  const fill = fiveDucksFill(tasks, today);
 
   const wrap = el(`
     <section class="tabpanel">
@@ -784,7 +805,26 @@ function renderProjects() {
         <div class="color-picker" id="projColor">
           ${PROJECT_COLORS.map((c, i) => `<button type="button" data-color="${c}" class="${i === 0 ? 'sel' : ''}" style="background:${c}"></button>`).join('')}
         </div>
+        <label>Target/due date (optional)
+          <input id="projDue" type="date">
+        </label>
+        <label>Ducks
+          <select id="projDucks">
+            <option value="">Not rated</option>
+            ${[1, 2, 3, 4, 5].map((n) => `<option value="${n}">${n} duck${n > 1 ? 's' : ''}</option>`).join('')}
+          </select>
+        </label>
+        <label>Category
+          <select id="projCategory">
+            ${CATEGORIES.map((c) => `<option value="${c.id}" ${c.id === 'admin' ? 'selected' : ''}>${c.label}</option>`).join('')}
+          </select>
+        </label>
         <button id="projCreate">Create project</button>
+      </details>
+
+      <details class="new-project">
+        <summary>+ New project from template</summary>
+        ${renderTemplatePickerBody_(wrap)}
       </details>
     </section>
   `);
@@ -803,7 +843,15 @@ function renderProjects() {
       alert('Give the project a title and a short nickname.');
       return;
     }
-    const p = newTask({ title, size: 'XL', chip: { nickname, color: colorBtn.dataset.color } });
+    const ducksVal = wrap.querySelector('#projDucks').value;
+    const p = newTask({
+      title,
+      size: 'XL',
+      due: wrap.querySelector('#projDue').value || null,
+      ducks: ducksVal ? Number(ducksVal) : null,
+      category: wrap.querySelector('#projCategory').value || 'admin',
+      chip: { nickname, color: colorBtn.dataset.color }
+    });
     saveTask(p);
     logEvent('created', p.id, { project: true });
     scheduleSync();
@@ -811,7 +859,160 @@ function renderProjects() {
     render();
   });
 
+  wireTemplatePicker_(wrap);
+
   return wrap;
+}
+
+// ---------- project templates ----------
+// A template is a reusable shape for a repeatable multi-step project (the
+// realtor's "sell a house" checklist, run again for each new listing):
+// a list of step titles with a DAY OFFSET from the project's start date,
+// rather than fixed dates, so instantiating it just needs one start date
+// and every step's due date shifts automatically. Stored in settings
+// (synced like any other setting) rather than as tasks, since a template
+// isn't a to-do itself.
+
+function getTemplates_() {
+  return getSettings().templates || [];
+}
+function saveTemplates_(templates) {
+  saveSettings({ templates });
+  scheduleSync();
+}
+
+function createTemplateFromProject(projectId) {
+  const project = getTask(projectId);
+  if (!project) return;
+  const name = prompt('Name this template (e.g. "Sell a house"):', project.chip ? project.chip.nickname : '');
+  if (!name) return;
+  const steps = getSteps(projectId);
+  if (!steps.length) {
+    alert('This project has no steps yet, nothing to save as a template.');
+    return;
+  }
+  // Day offsets are relative to the EARLIEST due date among the steps (or
+  // 0 for everything if none have dates), so re-applying the template just
+  // needs one new start date to shift every step forward from.
+  const dated = steps.filter((s) => s.due).map((s) => s.due).sort();
+  const base = dated[0] || null;
+  const dayOffsetFrom_ = (dueStr) => {
+    if (!dueStr || !base) return 0;
+    const [y1, m1, d1] = base.split('-').map(Number);
+    const [y2, m2, d2] = dueStr.split('-').map(Number);
+    return Math.round((Date.UTC(y2, m2 - 1, d2) - Date.UTC(y1, m1 - 1, d1)) / 86400000);
+  };
+  const template = {
+    id: uuid_(),
+    name,
+    steps: steps.map((s) => ({
+      title: s.title,
+      dayOffset: dayOffsetFrom_(s.due),
+      hasDue: !!s.due,
+      ducks: s.ducks,
+      size: s.size,
+      category: s.category
+    }))
+  };
+  const templates = getTemplates_().concat(template);
+  saveTemplates_(templates);
+  alert(`Saved "${name}" as a template with ${steps.length} step${steps.length > 1 ? 's' : ''}. Use "+ New project from template" on the Projects tab to reuse it.`);
+  render();
+}
+
+function deleteTemplate(id) {
+  if (!confirm('Delete this template? (Projects already made from it are not affected.)')) return;
+  saveTemplates_(getTemplates_().filter((t) => t.id !== id));
+  render();
+}
+
+function uuid_() {
+  if (crypto.randomUUID) return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+  });
+}
+
+function renderTemplatePickerBody_() {
+  const templates = getTemplates_();
+  if (!templates.length) {
+    return '<p class="hint">No templates yet. Open a project with steps and use "Save as template" there to create one.</p>';
+  }
+  return `
+    <label>Template
+      <select id="tplPick">
+        ${templates.map((t) => `<option value="${t.id}">${esc(t.name)} (${t.steps.length} step${t.steps.length > 1 ? 's' : ''})</option>`).join('')}
+      </select>
+    </label>
+    <label>New project title
+      <input id="tplTitle" placeholder="e.g. Sell 123 Oak Ave">
+    </label>
+    <label>Short nickname
+      <input id="tplNickname" placeholder="e.g. Oak Ave" maxlength="16">
+    </label>
+    <label>Color</label>
+    <div class="color-picker" id="tplColor">
+      ${PROJECT_COLORS.map((c, i) => `<button type="button" data-color="${c}" class="${i === 0 ? 'sel' : ''}" style="background:${c}"></button>`).join('')}
+    </div>
+    <label>Start date (step due dates shift to match)
+      <input id="tplStart" type="date">
+    </label>
+    <button id="tplCreate">Create project from template</button>
+    <h3 style="margin-top:14px">Manage templates</h3>
+    <div class="cards">
+      ${templates.map((t) => `
+        <div class="card">
+          <div class="card-title">${esc(t.name)}</div>
+          <div class="card-meta"><span class="chip">${t.steps.length} step${t.steps.length > 1 ? 's' : ''}</span></div>
+          <div class="card-actions"><button data-action="deleteTemplate" data-id="${t.id}" class="danger">Delete template</button></div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function wireTemplatePicker_(wrap) {
+  wrap.querySelectorAll('#tplColor button').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      wrap.querySelectorAll('#tplColor button').forEach((b) => b.classList.remove('sel'));
+      btn.classList.add('sel');
+    });
+  });
+  const createBtn = wrap.querySelector('#tplCreate');
+  if (!createBtn) return;
+  createBtn.addEventListener('click', () => {
+    const templateId = wrap.querySelector('#tplPick').value;
+    const template = getTemplates_().find((t) => t.id === templateId);
+    const title = wrap.querySelector('#tplTitle').value.trim();
+    const nickname = wrap.querySelector('#tplNickname').value.trim();
+    const colorBtn = wrap.querySelector('#tplColor button.sel');
+    const startDate = wrap.querySelector('#tplStart').value;
+    if (!template || !title || !nickname) {
+      alert('Pick a template and give the new project a title and nickname.');
+      return;
+    }
+    const project = newTask({ title, size: 'XL', chip: { nickname, color: colorBtn.dataset.color } });
+    saveTask(project);
+    logEvent('created', project.id, { project: true, fromTemplate: template.id });
+    template.steps.forEach((stepDef, order) => {
+      const due = (stepDef.hasDue && startDate) ? addDaysToDateStr(startDate, stepDef.dayOffset) : null;
+      const step = newTask({
+        title: stepDef.title,
+        projectId: project.id,
+        order,
+        due,
+        ducks: stepDef.ducks,
+        size: stepDef.size,
+        category: stepDef.category
+      });
+      saveTask(step);
+      logEvent('created', step.id, { step: true, projectId: project.id });
+    });
+    scheduleSync();
+    openProjectId = project.id;
+    render();
+  });
 }
 
 function renderProjectDetail(project) {
@@ -823,6 +1024,7 @@ function renderProjectDetail(project) {
       <button type="button" id="backToProjects" class="back-link">&larr; All projects</button>
       <h2><span class="project-dot" style="background:${esc(chip.color)}"></span> ${esc(chip.nickname)}: ${esc(project.title)}</h2>
       <p class="hint">${prog.done} of ${prog.total} steps done</p>
+      <button type="button" data-action="saveTemplate" data-id="${project.id}" class="back-link">Save as template</button>
 
       <div class="cards">
         ${steps.length ? steps.map((s) => `
@@ -1049,6 +1251,16 @@ function renderSettings(settings) {
     saveTask(t);
     logEvent('created', t.id, { recurring: true });
     scheduleSync();
+    // Clear the form so it's obvious the submit actually went through
+    // (previously the old title/day sat there looking unchanged, which
+    // read as "did that even save?") and so a second recurring task can't
+    // be entered by accident with the first one's leftover values.
+    wrap.querySelector('#recTitle').value = '';
+    wrap.querySelector('#recDay').value = '1';
+    wrap.querySelector('#recDucks').value = '';
+    wrap.querySelector('#recSize').value = '';
+    wrap.querySelector('#recCategory').value = 'money';
+    alert(`Added "${title}". First due ${fmtDue(due)}, it'll show on your List tab (not just here).`);
     render();
   });
 
