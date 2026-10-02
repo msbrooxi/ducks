@@ -778,6 +778,62 @@ only `flex-direction` against a more generic rule), with explicit sizing
 (18px checkboxes, tighter row padding, no stray margins) so this can't
 drift the same way again even under a future caching hiccup.
 
+**Round 19 (2026-10-02): refactor pass.** Requested directly: make the
+codebase more efficient, elegant, and build-upon-able. Scope was
+deliberately conservative given this is a production app with no way for
+Stephanie to debug it herself: real cleanups with a clean, low-risk
+boundary, not a speculative rewrite, and everything verified by actually
+running the app in a browser afterward rather than just reading the diff.
+
+- **Extracted `app/templates.js`** from `main.js`: the entire project-
+  template system (draft-building state, the from-scratch builder UI,
+  instantiating a template into a real project, propagating a template edit
+  back onto projects already made from it). This was the single largest,
+  most self-contained chunk in `main.js` (~500 of its then-1900 lines) and
+  the whole source of Rounds 12-18's dependency bugs, so it earns being
+  somewhere a future session can find and reason about on its own rather
+  than scrolling through everything else to get to it. `main.js` exports
+  the handful of shared helpers templates.js needs back
+  (`esc`/`duckIcons`/`sizeLabel`/`fmtDue`/`PROJECT_COLORS`/
+  `addDaysToDateStr`/`render`/`openProject`); templates.js exports its
+  public surface (`createTemplateFromProject`, `editTemplate`,
+  `deleteTemplate`, the three render/wire function pairs, and two small
+  getters, `templateDraftIsOpen()`/`templateBuilderSummary()`, so main.js
+  can decide how to render the "+ New template" section without reaching
+  into templates.js's private mutable state directly). This is a circular
+  import (each module imports from the other), which native ES modules
+  handle fine as long as neither side touches the other's bindings at the
+  top level, only from inside functions that run later, which is the case
+  here. `main.js` is down to ~1400 lines.
+- **Extracted a shared `openProject(id)`** in main.js (switch to Projects
+  tab with a specific project open), replacing three separate copies of the
+  same three-line sequence (the click dispatcher's "openProject" action,
+  the "+ New project" create handler, and templates.js's template-
+  instantiation handler all needed it).
+- **Removed a genuine dead function**, `bindCardActions`: it computed a
+  local variable and did nothing else, called via `.forEach(bindCardActions)`
+  in two places purely as an artifact of an earlier design. All card button
+  clicks have gone through the single delegated listener on `#app`
+  (`attachGlobalDelegation`) for a long time; this never did anything.
+- **Code.gs**: `handleKidSubmit_` had its own locally-duplicated copy of
+  the `CORE_FIELDS` list (kept manually in sync with the module-level one
+  by a comment, not the compiler). Now just reads the module-level
+  `CORE_FIELDS`.
+- **Verified with Playwright**, not just read: spun up a local static
+  server, drove real Chromium through quick-add, duck rating, cloning,
+  completing a task, the Done tab, creating a project and adding steps,
+  building a template from scratch with a step depending on one added
+  later, editing an existing step, reordering steps (including moving the
+  depended-on step to a different position), removing a step, saving and
+  instantiating the template, and the recurring-task form's weekly/
+  annually field swapping. Zero console or page errors across both runs,
+  and the dependency chip resolved correctly in every case, confirming the
+  module split didn't regress the exact bug class Rounds 16-18 fixed.
+- No Code.gs behavior changed beyond the CORE_FIELDS dedup (still needs a
+  redeploy for that one line, though it has no user-visible effect; safe to
+  batch into whenever the next real Code.gs change happens rather than
+  redeploying just for this).
+
 ## Build order
 0. **Test first:** throwaway Apps Script + Pages page. Stephanie tests from
    iPhone and a Samsung: write, read, kid submit. Stop and rethink if it fails.

@@ -223,13 +223,8 @@ function handleKidSubmit_(body, kidName) {
   var id = Utilities.getUuid();
   var slug = kidName.toLowerCase();
 
-  var coreFields = [
-    'title', 'notes', 'link', 'ducks', 'due', 'size', 'category',
-    'status', 'doingSince', 'completedAt', 'deletedAt',
-    'recurrence', 'projectId', 'order', 'chip', 'dependsOn'
-  ];
   var fieldUpdatedAt = {};
-  for (var i = 0; i < coreFields.length; i++) fieldUpdatedAt[coreFields[i]] = now;
+  for (var i = 0; i < CORE_FIELDS.length; i++) fieldUpdatedAt[CORE_FIELDS[i]] = now;
 
   var task = {
     id: id,
