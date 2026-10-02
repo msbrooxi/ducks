@@ -349,6 +349,32 @@ or report it if not. This was reasoned through carefully, not confirmed
 against her real data (no Drive access), so it should be verified
 against an actual repeat of the failure, not assumed fixed.
 
+**Round 5 (2026-10-02): silent mutation failures, and a stale screen.**
+Reported: tapping "Done" in List played the quack but the task never
+reached Done, and the five-ducks row never moved. Found the mechanism:
+`mutateTask()` already silently did nothing if it couldn't find the task
+by id (`if (!t) return;`), but `completeTask()` called `playQuack()`
+unconditionally right after calling it, regardless of whether it actually
+worked. A failed completion sounded identical to a successful one.
+`mutateTask()` now returns true/false, logs to the console, and shows a
+plain alert ("that didn't save, closing and reopening should fix it")
+instead of failing silently; `completeTask()` only plays the sound and
+spawns a recurring task's next instance if it actually succeeded.
+
+The more likely reason it couldn't find the task at all: `sync.js`'s
+background syncs (every 60s, and on regaining focus) call
+`replaceAllTasks()` directly with no way for the visible screen to know
+it should refresh, so what she was looking at could be several syncs
+stale relative to the real data. `syncNow()` now fingerprints the task
+set before and after a pull (`id:updatedAt` pairs, sorted and joined) and
+reports whether anything actually changed; `main.js`'s `onSyncStatus`
+handler re-renders when it did, skipped only while she's actively
+mid-keystroke in a debounced field (checked via `document.activeElement`
++ `isDebouncedField_()`) so this can never interrupt typing. This closes
+the general class of "the screen said one thing, the data said another"
+that several of tonight's reports share, not confirmed as the exact
+mechanism for every one of them, but a real gap regardless.
+
 ## Build order
 0. **Test first:** throwaway Apps Script + Pages page. Stephanie tests from
    iPhone and a Samsung: write, read, kid submit. Stop and rethink if it fails.

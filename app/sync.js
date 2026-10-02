@@ -18,6 +18,10 @@ function announce_(status, detail) {
   for (const fn of listeners) fn(status, detail);
 }
 
+function fingerprint_(tasks) {
+  return tasks.map((t) => t.id + ':' + t.updatedAt).sort().join('|');
+}
+
 export function scheduleSync(delayMs = 2000) {
   clearTimeout(pushTimer);
   pushTimer = setTimeout(syncNow, delayMs);
@@ -64,6 +68,17 @@ export async function syncNow() {
       return stamped;
     });
 
+    // Did this pull actually change anything the screen could be showing?
+    // A background sync (periodic, or on focus) used to silently replace
+    // the local data with no way for main.js to know it should refresh,
+    // meaning the screen could go stale relative to reality: tapping
+    // "Done" on a task that's already been removed or changed underneath
+    // it would find nothing to update and do nothing, silently. Comparing
+    // a cheap fingerprint lets the caller re-render only when something
+    // genuinely changed, not on every empty 60-second poll.
+    const before = fingerprint_(Object.values(tasksById));
+    const after = fingerprint_(incomingTasks);
+
     replaceAllTasks(incomingTasks);
     if (data.settings) replaceSettings(data.settings);
     clearDirtyTasks(dirtyIds);
@@ -75,7 +90,7 @@ export async function syncNow() {
       scheduleSync(500);
     }
 
-    announce_('ok');
+    announce_('ok', { changed: before !== after });
     return { ok: true };
   } catch (err) {
     announce_('error', String(err));

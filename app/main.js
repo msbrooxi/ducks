@@ -12,7 +12,7 @@ import { computeFirstDue, computeNextDue, FREQUENCIES, recurrenceLabel } from '.
 // Bumped by hand on every shipped change. Shown in Settings so it's a
 // one-glance way to tell whether a device is actually running the latest
 // build, instead of guessing from a stale cached copy.
-const APP_BUILD = '2026-10-02.1';
+const APP_BUILD = '2026-10-02.2';
 
 let activeTab = 'home';
 let expandedTaskId = null;
@@ -87,12 +87,24 @@ function mutateTask(id, patch, eventType, eventExtra) {
   // the one working from stale data, belt and suspenders.
   flushPendingFieldEdits();
   const t = getTask(id);
-  if (!t) return;
+  if (!t) {
+    // This used to fail silently: whatever called mutateTask (e.g.
+    // completeTask) would carry on as if it worked, playing the quack and
+    // all, while nothing was actually saved. The most likely way to land
+    // here is tapping something on a screen that's gone stale relative to
+    // the real data (see the sync-triggered render fix below), so surface
+    // it loudly rather than pretend.
+    console.error('mutateTask: no task found for id', id, 'patch', patch);
+    alert("That didn't save, the screen may be out of date. Closing and reopening should fix it.");
+    render(); // refresh to the current real data now, at least
+    return false;
+  }
   const updated = touchTask(t, patch);
   saveTask(updated);
   if (eventType) logEvent(eventType, id, eventExtra || {});
   scheduleSync();
   render();
+  return true;
 }
 
 // Text fields (title/notes/link) autosave on every keystroke, debounced,
@@ -161,7 +173,8 @@ function addQuickTask(title, { due, size, category, ducks } = {}) {
 
 function completeTask(id) {
   const t = getTask(id);
-  mutateTask(id, { status: 'done', completedAt: nowIso(), doingSince: null }, 'completed');
+  const ok = mutateTask(id, { status: 'done', completedAt: nowIso(), doingSince: null }, 'completed');
+  if (!ok) return; // mutateTask already alerted and refreshed the screen
   playQuack();
 
   // Recurring tasks keep only one live instance; completing it (whether
@@ -1091,11 +1104,23 @@ function downloadFile(name, content, type) {
 
 onSyncStatus((status, detail) => {
   const box = document.getElementById('syncStatus');
-  if (!box) return;
-  if (status === 'syncing') box.textContent = 'Syncing...';
-  else if (status === 'ok') box.textContent = 'Synced.';
-  else if (status === 'unconfigured') box.textContent = 'Not connected yet. Fill in the URL and key above.';
-  else if (status === 'error') box.textContent = 'Sync error: ' + detail;
+  if (box) {
+    if (status === 'syncing') box.textContent = 'Syncing...';
+    else if (status === 'ok') box.textContent = 'Synced.';
+    else if (status === 'unconfigured') box.textContent = 'Not connected yet. Fill in the URL and key above.';
+    else if (status === 'error') box.textContent = 'Sync error: ' + detail;
+  }
+  // A background sync (periodic, or on regaining focus) used to update
+  // the data with no way for the screen to know it should catch up, so
+  // what she was looking at could go stale relative to reality, tapping
+  // something on a stale card could silently find nothing to act on (see
+  // mutateTask's own check for this). Only re-render when something
+  // genuinely changed, and not while she's actively mid-keystroke in a
+  // text field, so this never interrupts typing, just keeps a screen
+  // that's sitting idle honest.
+  if (status === 'ok' && detail && detail.changed && !isDebouncedField_(document.activeElement)) {
+    render();
+  }
 });
 
 attachGlobalDelegation();
