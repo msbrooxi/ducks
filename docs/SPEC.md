@@ -869,6 +869,21 @@ sophisticated way to specify itself eventually (this round just widens the
 existing day-number scheme to the range it should always have allowed, it
 doesn't add new recurrence shapes).
 
+**Round 21 (2026-10-02): a project filter on the List tab.** Added
+`listFilters.projects` (an array) alongside the existing category/size/
+ducks filters, with a new `#fProjects` multi-select next to them listing
+every project's nickname plus a `'none'` sentinel option labeled "No
+project" (no real project id can ever collide with that literal string).
+Picking one or more projects shows tasks belonging to ANY of them;
+including "No project" in the selection adds tasks with no `projectId` to
+that same OR, so "Alpha project or unassigned" is one selection, not an
+impossible intersection. Applied the same way the existing filters are:
+only to the non-past-due section of the list, past-due items stay visible
+regardless of any filter, matching the established "never hide something
+that's overdue" behavior. Verified with Playwright: filtering to a project
+alone, to "No project" alone, and to both together all produced the
+correct task set.
+
 ## Build order
 0. **Test first:** throwaway Apps Script + Pages page. Stephanie tests from
    iPhone and a Samsung: write, read, kid submit. Stop and rethink if it fails.

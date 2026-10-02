@@ -3,26 +3,26 @@ import {
   getLocal, saveLocal, getConn, saveConn, isPastDue, ducksDayDate,
   logEvent, CATEGORIES, SIZES, nowIso,
   getProjectList, getSteps, projectProgress
-} from './store.js?v=2026-10-02.17';
-import { scheduleSync, syncNow, onSyncStatus, startBackgroundSync, exportEventLog } from './sync.js?v=2026-10-02.17';
-import { doNextList, minutesFilter, fiveDucksFill, sortForList, LIST_SORTS, DEFAULT_SORT_DIR, SORT_DIR_LABELS, isBlocked } from './rank.js?v=2026-10-02.17';
-import { playQuack, playParade } from './quack.js?v=2026-10-02.17';
-import { computeFirstDue, computeNextDue, FREQUENCIES, recurrenceLabel, WEEKDAY_NAMES, MONTH_NAMES } from './recurrence.js?v=2026-10-02.17';
+} from './store.js?v=2026-10-02.18';
+import { scheduleSync, syncNow, onSyncStatus, startBackgroundSync, exportEventLog } from './sync.js?v=2026-10-02.18';
+import { doNextList, minutesFilter, fiveDucksFill, sortForList, LIST_SORTS, DEFAULT_SORT_DIR, SORT_DIR_LABELS, isBlocked } from './rank.js?v=2026-10-02.18';
+import { playQuack, playParade } from './quack.js?v=2026-10-02.18';
+import { computeFirstDue, computeNextDue, FREQUENCIES, recurrenceLabel, WEEKDAY_NAMES, MONTH_NAMES } from './recurrence.js?v=2026-10-02.18';
 import {
   createTemplateFromProject, editTemplate, deleteTemplate,
   renderTemplatePickerBody_, renderTemplateManageList_, renderTemplateBuilder_,
   wireTemplatePicker_, wireTemplateBuilder_, templateDraftIsOpen, templateBuilderSummary
-} from './templates.js?v=2026-10-02.17';
+} from './templates.js?v=2026-10-02.18';
 
 // Bumped by hand on every shipped change. Shown in Settings so it's a
 // one-glance way to tell whether a device is actually running the latest
 // build, instead of guessing from a stale cached copy.
-const APP_BUILD = '2026-10-02.17';
+const APP_BUILD = '2026-10-02.18';
 
 let activeTab = 'home';
 let expandedTaskId = null;
 let minutesQuery = null;
-let listFilters = { category: '', size: '', ducks: '', sort: 'date', dir: {} };
+let listFilters = { category: '', size: '', ducks: '', projects: [], sort: 'date', dir: {} };
 function currentListDir_() {
   return listFilters.dir[listFilters.sort] || DEFAULT_SORT_DIR[listFilters.sort] || 'asc';
 }
@@ -796,6 +796,16 @@ function renderList(tasks, settings, today) {
     if (listFilters.ducks === 'unrated') rest = rest.filter((t) => t.ducks == null);
     else rest = rest.filter((t) => t.ducks === Number(listFilters.ducks));
   }
+  // 'none' is a sentinel for "not associated with a project" (no real
+  // project ever has that as its id), so picking it alongside one or more
+  // real projects reads as "this project OR no project", not an
+  // impossible intersection.
+  if (listFilters.projects.length) {
+    rest = rest.filter((t) => (
+      (listFilters.projects.includes('none') && !t.projectId) ||
+      listFilters.projects.includes(t.projectId)
+    ));
+  }
 
   if (expandedTaskId && frozenListOrder && frozenListForTaskId === expandedTaskId) {
     // Keep editing in place: reuse the last order, dropping anything that
@@ -831,6 +841,10 @@ function renderList(tasks, settings, today) {
           <option value="unrated" ${listFilters.ducks === 'unrated' ? 'selected' : ''}>Not rated yet</option>
           ${[1, 2, 3, 4, 5].map((n) => `<option value="${n}" ${listFilters.ducks === String(n) ? 'selected' : ''}>${n} duck${n > 1 ? 's' : ''}</option>`).join('')}
         </select>
+        <select id="fProjects" multiple size="4" title="Project (Ctrl/Cmd-click to pick more than one)">
+          <option value="none" ${listFilters.projects.includes('none') ? 'selected' : ''}>No project</option>
+          ${getProjectList().map((p) => `<option value="${p.id}" ${listFilters.projects.includes(p.id) ? 'selected' : ''}>${esc(p.chip.nickname)}</option>`).join('')}
+        </select>
       </div>
       ${pastDue.length ? `<h3>Past due</h3><div class="cards">${pastDue.map((t) => taskCard(t, today)).join('')}</div>` : ''}
       <h3>${sortHeading_()}</h3>
@@ -847,6 +861,9 @@ function renderList(tasks, settings, today) {
   wrap.querySelector('#fCategory').addEventListener('change', resortAnd_((e) => { listFilters.category = e.target.value; }));
   wrap.querySelector('#fSize').addEventListener('change', resortAnd_((e) => { listFilters.size = e.target.value; }));
   wrap.querySelector('#fDucks').addEventListener('change', resortAnd_((e) => { listFilters.ducks = e.target.value; }));
+  wrap.querySelector('#fProjects').addEventListener('change', resortAnd_((e) => {
+    listFilters.projects = Array.from(e.target.selectedOptions).map((o) => o.value);
+  }));
   return wrap;
 }
 
