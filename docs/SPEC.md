@@ -523,6 +523,29 @@ round needed no Code.gs redeploy, just that normal propagation delay.
   already clamps short months. Verified with direct node tests (weekly/
   biweekly stepping, annual rollover, Feb 29 clamping) before shipping.
 
+**Round 9 (2026-10-02): making the CDN delay a non-issue, and a manual
+sync button.** Stephanie asked whether there was anything she could trigger
+on her end to force past a stale CDN response after a push (there isn't:
+it's cached in front of her browser, not in it, so a hard refresh or a
+fresh browser can't reach past it). Rather than leave that as a wait-it-
+out situation every round, fixed it at the root: `index.html`'s script tag
+and every relative `import` across the app modules now carry a
+`?v=<build>` query string tied to the current build. A query string makes
+it a genuinely different URL, which is a different cache entry at every
+layer (browser and CDN alike), so a new release is never capable of
+being confused with the stale one still cached under the old URL. This
+needs updating in every file's imports each time APP_BUILD changes (a
+handful of `sed` replacements), not automatic, noted here so it isn't
+forgotten on a future round.
+
+Also added an explicit **Sync now** button in Settings, next to the
+connection fields: flushes any pending edit, runs a sync immediately
+rather than waiting for the 60-second check-in or a tab switch, and
+always re-renders when it's done (the background `onSyncStatus` handler
+only re-renders when its fingerprint check finds something actually
+changed; a button she just pressed needs to visibly do something either
+way, so this bypasses that check).
+
 ## Build order
 0. **Test first:** throwaway Apps Script + Pages page. Stephanie tests from
    iPhone and a Samsung: write, read, kid submit. Stop and rethink if it fails.

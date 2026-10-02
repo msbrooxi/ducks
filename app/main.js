@@ -3,16 +3,16 @@ import {
   getLocal, saveLocal, getConn, saveConn, isPastDue, ducksDayDate,
   logEvent, CATEGORIES, SIZES, nowIso,
   getProjectList, getSteps, projectProgress
-} from './store.js';
-import { scheduleSync, syncNow, onSyncStatus, startBackgroundSync, exportEventLog } from './sync.js';
-import { doNextList, minutesFilter, fiveDucksFill, sortForList, LIST_SORTS, DEFAULT_SORT_DIR, SORT_DIR_LABELS, isBlocked } from './rank.js';
-import { playQuack, playParade } from './quack.js';
-import { computeFirstDue, computeNextDue, FREQUENCIES, recurrenceLabel, WEEKDAY_NAMES, MONTH_NAMES } from './recurrence.js';
+} from './store.js?v=2026-10-02.6';
+import { scheduleSync, syncNow, onSyncStatus, startBackgroundSync, exportEventLog } from './sync.js?v=2026-10-02.6';
+import { doNextList, minutesFilter, fiveDucksFill, sortForList, LIST_SORTS, DEFAULT_SORT_DIR, SORT_DIR_LABELS, isBlocked } from './rank.js?v=2026-10-02.6';
+import { playQuack, playParade } from './quack.js?v=2026-10-02.6';
+import { computeFirstDue, computeNextDue, FREQUENCIES, recurrenceLabel, WEEKDAY_NAMES, MONTH_NAMES } from './recurrence.js?v=2026-10-02.6';
 
 // Bumped by hand on every shipped change. Shown in Settings so it's a
 // one-glance way to tell whether a device is actually running the latest
 // build, instead of guessing from a stale cached copy.
-const APP_BUILD = '2026-10-02.5';
+const APP_BUILD = '2026-10-02.6';
 
 let activeTab = 'home';
 let expandedTaskId = null;
@@ -1171,6 +1171,7 @@ function renderSettings(settings) {
         <input id="connKey" value="${esc(conn.key)}" placeholder="your long key">
       </label>
       <button id="saveConn">Save connection</button>
+      <button id="syncNowBtn" type="button">Sync now</button>
       <p id="syncStatus" class="hint"></p>
 
       <h2>Ranking</h2>
@@ -1253,6 +1254,18 @@ function renderSettings(settings) {
   wrap.querySelector('#saveConn').addEventListener('click', () => {
     saveConn({ url: wrap.querySelector('#connUrl').value.trim(), key: wrap.querySelector('#connKey').value.trim() });
     syncNow();
+  });
+  // Pulls (and pushes any pending local changes) right now instead of
+  // waiting for the next 60-second check-in or a tab switch. onSyncStatus
+  // already re-renders on a background sync, but only when its fingerprint
+  // check finds something changed; this is a deliberate action, so force a
+  // render regardless, otherwise "nothing changed" looks indistinguishable
+  // from "didn't actually sync."
+  wrap.querySelector('#syncNowBtn').addEventListener('click', async () => {
+    flushPendingFieldEdits();
+    const result = await syncNow();
+    render();
+    if (!result.ok) alert('Sync failed: ' + result.error);
   });
   wrap.querySelector('#rankSlider2').addEventListener('change', (e) => {
     saveSettings({ rankSlider: Number(e.target.value) });
