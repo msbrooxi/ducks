@@ -668,6 +668,40 @@ clone is a new, independent, active task, not a second copy of whatever
 state the original was in. Opens the clone's own editor immediately since
 the point of cloning is to go tweak it.
 
+**Round 14 (2026-10-02): editing/reordering drafted template steps, and
+dependencies on a step added later.** The "forgot an earlier pre-req"
+report (added a step partway through drafting, with a negative day offset
+to put it before the start, but couldn't go back and mark an earlier step
+as depending on it) exposed a real design limitation, not a bug: template
+dependencies were stored as `dependsOnIdx`, a position within the steps
+array, and the picker only offered steps already added above the one being
+edited, specifically to avoid a forward reference a position-based scheme
+can't express cleanly.
+
+Fixed at the root by switching template dependencies from position
+(`dependsOnIdx`) to a stable per-step `key` (`dependsOnKeys`), both in the
+draft builder and in the saved template shape (`createTemplateFromProject`,
+`propagateTemplateEdit_`, and the instantiation handler in
+`wireTemplatePicker_` all updated to match). A key doesn't shift when steps
+are added, removed, or reordered, so a step can depend on any OTHER step in
+the draft regardless of which was added first, and the "depends on" picker
+now simply excludes the step currently being edited rather than filtering
+by position. Verified with a standalone simulation: step A set to depend on
+step C, then C moved to the end of the array, dependency still resolved
+correctly after instantiation.
+
+This also made two other asks straightforward to add to the same builder:
+**editing a drafted step** ("Edit" on its card loads it back into the
+add-step form, keeping its same key) and **reordering** ("Move up"/"Move
+down", a plain array swap with no index remapping needed now that
+dependencies are keyed, not positional).
+
+Note for next session: template drafts live only in memory
+(`templateDraftSteps`) until "Save template" is clicked, so an in-progress
+draft does not survive a page reload. If a draft was open when this build
+shipped, it needs to be re-entered (or finished and saved) rather than
+picked back up.
+
 ## Build order
 0. **Test first:** throwaway Apps Script + Pages page. Stephanie tests from
    iPhone and a Samsung: write, read, kid submit. Stop and rethink if it fails.

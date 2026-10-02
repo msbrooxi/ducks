@@ -3,16 +3,16 @@ import {
   getLocal, saveLocal, getConn, saveConn, isPastDue, ducksDayDate,
   logEvent, CATEGORIES, SIZES, nowIso,
   getProjectList, getSteps, projectProgress
-} from './store.js?v=2026-10-02.10';
-import { scheduleSync, syncNow, onSyncStatus, startBackgroundSync, exportEventLog } from './sync.js?v=2026-10-02.10';
-import { doNextList, minutesFilter, fiveDucksFill, sortForList, LIST_SORTS, DEFAULT_SORT_DIR, SORT_DIR_LABELS, isBlocked } from './rank.js?v=2026-10-02.10';
-import { playQuack, playParade } from './quack.js?v=2026-10-02.10';
-import { computeFirstDue, computeNextDue, FREQUENCIES, recurrenceLabel, WEEKDAY_NAMES, MONTH_NAMES } from './recurrence.js?v=2026-10-02.10';
+} from './store.js?v=2026-10-02.11';
+import { scheduleSync, syncNow, onSyncStatus, startBackgroundSync, exportEventLog } from './sync.js?v=2026-10-02.11';
+import { doNextList, minutesFilter, fiveDucksFill, sortForList, LIST_SORTS, DEFAULT_SORT_DIR, SORT_DIR_LABELS, isBlocked } from './rank.js?v=2026-10-02.11';
+import { playQuack, playParade } from './quack.js?v=2026-10-02.11';
+import { computeFirstDue, computeNextDue, FREQUENCIES, recurrenceLabel, WEEKDAY_NAMES, MONTH_NAMES } from './recurrence.js?v=2026-10-02.11';
 
 // Bumped by hand on every shipped change. Shown in Settings so it's a
 // one-glance way to tell whether a device is actually running the latest
 // build, instead of guessing from a stale cached copy.
-const APP_BUILD = '2026-10-02.10';
+const APP_BUILD = '2026-10-02.11';
 
 let activeTab = 'home';
 let expandedTaskId = null;
@@ -988,24 +988,28 @@ function createTemplateFromProject(projectId) {
     const [y2, m2, d2] = dueStr.split('-').map(Number);
     return Math.round((Date.UTC(y2, m2 - 1, d2) - Date.UTC(y1, m1 - 1, d1)) / 86400000);
   };
+  // Each step gets a stable key up front so dependencies can reference
+  // steps BY KEY rather than by position in the array. Positions shift
+  // every time a step is added, removed, or reordered, keys don't.
+  const stepKeys = steps.map(() => uuid_());
+  const idToKey = {};
+  steps.forEach((s, i) => { idToKey[s.id] = stepKeys[i]; });
   const template = {
     id: uuid_(),
     name,
-    steps: steps.map((s) => ({
-      key: uuid_(), // see note on templateDraftSteps below: what propagation matches on
+    steps: steps.map((s, i) => ({
+      key: stepKeys[i],
       title: s.title,
       dayOffset: dayOffsetFrom_(s.due),
       hasDue: !!s.due,
       ducks: s.ducks,
       size: s.size,
       category: s.category,
-      // Map each step's real dependsOn (task ids) to positions within this
-      // SAME steps array, so the dependency shape survives into the
-      // template. A dependency pointing outside this project can't mean
-      // anything once reinstantiated elsewhere, so it's dropped.
-      dependsOnIdx: (s.dependsOn || [])
-        .map((id) => steps.findIndex((x) => x.id === id))
-        .filter((idx) => idx !== -1)
+      // Map each step's real dependsOn (task ids) to the key of the step
+      // it points at within THIS SAME steps array. A dependency pointing
+      // outside this project can't mean anything once reinstantiated
+      // elsewhere, so it's dropped.
+      dependsOnKeys: (s.dependsOn || []).map((id) => idToKey[id]).filter(Boolean)
     }))
   };
   const templates = getTemplates_().concat(template);
@@ -1022,16 +1026,18 @@ function createTemplateFromProject(projectId) {
 // right tool when there's no reason to ever create a throwaway real
 // project just to turn it into a template.
 let templateDraftName = '';
-let templateDraftSteps = []; // [{ title, dayOffset, ducks, size, category, dependsOnIdx: [] }]
+let templateDraftSteps = []; // [{ key, title, dayOffset, ducks, size, category, dependsOnKeys: [] }]
 let templateDraftEditingId = null; // set when editing an existing template in place, vs. creating a new one
+let templateEditingStepIdx = null; // set when the step sub-form is editing an existing drafted step, vs. adding a new one
 
 function editTemplate(id) {
   const template = getTemplates_().find((t) => t.id === id);
   if (!template) return;
   templateDraftEditingId = id;
   templateDraftName = template.name;
+  templateEditingStepIdx = null;
   // Deep copy so cancelling an edit never mutates the saved template.
-  templateDraftSteps = template.steps.map((s) => Object.assign({}, s, { dependsOnIdx: (s.dependsOnIdx || []).slice() }));
+  templateDraftSteps = template.steps.map((s) => Object.assign({}, s, { dependsOnKeys: (s.dependsOnKeys || []).slice() }));
   render();
 }
 
@@ -1084,10 +1090,10 @@ function propagateTemplateEdit_(template) {
 
     // Second pass once every step (old and newly-added) has a real id.
     template.steps.forEach((stepDef) => {
-      if (!stepDef.dependsOnIdx || !stepDef.dependsOnIdx.length) return;
+      if (!stepDef.dependsOnKeys || !stepDef.dependsOnKeys.length) return;
       const realId = keyToRealId[stepDef.key];
       if (!realId) return;
-      const dependsOn = stepDef.dependsOnIdx.map((j) => keyToRealId[template.steps[j].key]).filter(Boolean);
+      const dependsOn = stepDef.dependsOnKeys.map((k) => keyToRealId[k]).filter(Boolean);
       if (!dependsOn.length) return;
       saveTask(touchTask(getTask(realId), { dependsOn }));
     });
@@ -1099,56 +1105,76 @@ function propagateTemplateEdit_(template) {
 }
 
 function renderTemplateBuilder_() {
+  const titleByKey = {};
+  templateDraftSteps.forEach((s) => { titleByKey[s.key] = s.title; });
+  const editing = templateDraftSteps[templateEditingStepIdx] || null;
+
   const rows = templateDraftSteps.map((s, i) => `
-    <div class="card" style="padding:8px 10px">
+    <div class="card ${i === templateEditingStepIdx ? 'step-done' : ''}" style="padding:8px 10px">
       <div class="card-title">#${i + 1} ${esc(s.title)}</div>
       <div class="card-meta">
         <span class="chip">day ${s.dayOffset >= 0 ? '+' : ''}${s.dayOffset}</span>
         ${s.ducks ? `<span class="chip">${duckIcons(s.ducks, 14)}</span>` : ''}
         ${s.size ? `<span class="chip">${sizeLabel(s.size)}</span>` : ''}
-        ${s.dependsOnIdx.length ? `<span class="chip blocked">after ${s.dependsOnIdx.map((j) => '#' + (j + 1)).join(', ')}</span>` : ''}
+        ${s.dependsOnKeys.length ? `<span class="chip blocked">after ${s.dependsOnKeys.map((k) => esc(titleByKey[k] || '?')).join(', ')}</span>` : ''}
       </div>
-      <div class="card-actions"><button type="button" data-action="removeTemplateDraftStep" data-idx="${i}" class="danger">Remove</button></div>
+      <div class="card-actions">
+        <button type="button" data-action="moveTemplateDraftStep" data-idx="${i}" data-dir="-1" ${i === 0 ? 'disabled' : ''}>Move up</button>
+        <button type="button" data-action="moveTemplateDraftStep" data-idx="${i}" data-dir="1" ${i === templateDraftSteps.length - 1 ? 'disabled' : ''}>Move down</button>
+        <button type="button" data-action="editTemplateDraftStep" data-idx="${i}">Edit</button>
+        <button type="button" data-action="removeTemplateDraftStep" data-idx="${i}" class="danger">Remove</button>
+      </div>
     </div>
   `).join('');
+
+  // Any OTHER step is a valid dependency now, not just ones added earlier:
+  // dependencies are matched by key, not position, so there's no reason an
+  // earlier step can't depend on one added later (exactly the "forgot an
+  // earlier pre-req" case). A step can't depend on itself, so it's left out
+  // of its own picker.
+  const pickableSteps = templateDraftSteps.filter((s, i) => i !== templateEditingStepIdx);
+  const selectedDeps = editing ? editing.dependsOnKeys : [];
 
   return `
     <label>Template name
       <input id="tplDraftName" value="${esc(templateDraftName)}" placeholder="e.g. Sell a house">
     </label>
     <div class="cards">${rows || '<p class="empty">No steps added yet.</p>'}</div>
-    <h3 style="margin-top:12px">Add a step</h3>
+    <h3 style="margin-top:12px">${editing ? `Editing step #${templateEditingStepIdx + 1}` : 'Add a step'}</h3>
     <label>Step title
-      <input id="tplStepTitle" placeholder="e.g. List on MLS">
+      <input id="tplStepTitle" value="${esc(editing ? editing.title : '')}" placeholder="e.g. List on MLS">
     </label>
     <label>Due, as a day offset from the project's future start date (0 = start day; negative means before it, e.g. prep work)
-      <input id="tplStepOffset" type="number" value="0">
+      <input id="tplStepOffset" type="number" value="${editing ? editing.dayOffset : 0}">
     </label>
     <label>Ducks
       <select id="tplStepDucks">
         <option value="">Not rated</option>
-        ${[1, 2, 3, 4, 5].map((n) => `<option value="${n}">${n} duck${n > 1 ? 's' : ''}</option>`).join('')}
+        ${[1, 2, 3, 4, 5].map((n) => `<option value="${n}" ${editing && editing.ducks === n ? 'selected' : ''}>${n} duck${n > 1 ? 's' : ''}</option>`).join('')}
       </select>
     </label>
     <label>Duration
       <select id="tplStepSize">
         <option value="">Not set</option>
-        ${SIZES.map((s) => `<option value="${s.id}">${sizeLabel(s.id)}</option>`).join('')}
+        ${SIZES.map((s) => `<option value="${s.id}" ${editing && editing.size === s.id ? 'selected' : ''}>${sizeLabel(s.id)}</option>`).join('')}
       </select>
     </label>
     <label>Category
       <select id="tplStepCategory">
-        ${CATEGORIES.map((c) => `<option value="${c.id}" ${c.id === 'admin' ? 'selected' : ''}>${c.label}</option>`).join('')}
+        ${CATEGORIES.map((c) => `<option value="${c.id}" ${(editing ? editing.category === c.id : c.id === 'admin') ? 'selected' : ''}>${c.label}</option>`).join('')}
       </select>
     </label>
-    ${templateDraftSteps.length ? `
-      <label>Depends on (must finish first; only steps already added above are pickable, so list critical-path steps before whatever comes after them)
+    ${pickableSteps.length ? `
+      <label>Depends on (must finish first; any other step is pickable, including one added later than this one)
         <select id="tplStepDeps" multiple size="4">
-          ${templateDraftSteps.map((s, i) => `<option value="${i}">#${i + 1} ${esc(s.title)}</option>`).join('')}
+          ${pickableSteps.map((s) => `<option value="${s.key}" ${selectedDeps.includes(s.key) ? 'selected' : ''}>${esc(s.title)}</option>`).join('')}
         </select>
       </label>
     ` : ''}
-    <button type="button" id="tplAddStep">Add step to template</button>
+    <div class="save-row">
+      <button type="button" id="tplAddStep">${editing ? 'Update step' : 'Add step to template'}</button>
+      ${editing ? '<button type="button" id="tplCancelStepEdit">Cancel step edit</button>' : ''}
+    </div>
     <div class="save-row" style="margin-top:12px">
       <button type="button" id="tplSaveTemplate" class="save-btn">Save template</button>
       <button type="button" id="tplCancelTemplate">Cancel</button>
@@ -1160,42 +1186,92 @@ function wireTemplateBuilder_(wrap) {
   const container = wrap.querySelector('#tplBuilder');
   if (!container) return;
 
+  function refresh_() {
+    container.innerHTML = renderTemplateBuilder_();
+    wireInner_();
+  }
+
+  function readStepFromForm_() {
+    const title = container.querySelector('#tplStepTitle').value.trim();
+    if (!title) { alert('Give the step a title.'); return null; }
+    const depsSelect = container.querySelector('#tplStepDeps');
+    const dependsOnKeys = depsSelect ? Array.from(depsSelect.selectedOptions).map((o) => o.value) : [];
+    return {
+      title,
+      dayOffset: Number(container.querySelector('#tplStepOffset').value) || 0,
+      ducks: container.querySelector('#tplStepDucks').value ? Number(container.querySelector('#tplStepDucks').value) : null,
+      size: container.querySelector('#tplStepSize').value || null,
+      category: container.querySelector('#tplStepCategory').value || 'admin',
+      dependsOnKeys
+    };
+  }
+
   function wireInner_() {
     container.querySelector('#tplAddStep').addEventListener('click', () => {
       templateDraftName = container.querySelector('#tplDraftName').value;
-      const title = container.querySelector('#tplStepTitle').value.trim();
-      if (!title) { alert('Give the step a title.'); return; }
-      const depsSelect = container.querySelector('#tplStepDeps');
-      const dependsOnIdx = depsSelect ? Array.from(depsSelect.selectedOptions).map((o) => Number(o.value)) : [];
-      templateDraftSteps.push({
-        // A stable id for this step that survives edits (unlike its array
-        // position, which can shift if steps are added/removed/reordered
-        // later). This is what lets "apply this edit to projects I already
-        // made from this template" match a template step back to the real
-        // task it previously produced.
-        key: uuid_(),
-        title,
-        dayOffset: Number(container.querySelector('#tplStepOffset').value) || 0,
-        ducks: container.querySelector('#tplStepDucks').value ? Number(container.querySelector('#tplStepDucks').value) : null,
-        size: container.querySelector('#tplStepSize').value || null,
-        category: container.querySelector('#tplStepCategory').value || 'admin',
-        dependsOnIdx
+      const fields = readStepFromForm_();
+      if (!fields) return;
+      if (templateEditingStepIdx != null && templateDraftSteps[templateEditingStepIdx]) {
+        // Keep the existing key: anything that already depends on this step
+        // by key stays correctly pointed at it.
+        const key = templateDraftSteps[templateEditingStepIdx].key;
+        templateDraftSteps[templateEditingStepIdx] = Object.assign({ key }, fields);
+        templateEditingStepIdx = null;
+      } else {
+        templateDraftSteps.push(Object.assign({
+          // A stable id for this step that survives edits and reordering
+          // (unlike its array position). This is what lets dependencies
+          // keep pointing at the right step regardless of where it sits in
+          // the list, and what lets "apply this edit to projects I already
+          // made from this template" match a template step back to the
+          // real task it previously produced.
+          key: uuid_()
+        }, fields));
+      }
+      refresh_();
+    });
+    const cancelStepEditBtn = container.querySelector('#tplCancelStepEdit');
+    if (cancelStepEditBtn) {
+      cancelStepEditBtn.addEventListener('click', () => {
+        templateEditingStepIdx = null;
+        refresh_();
       });
-      container.innerHTML = renderTemplateBuilder_();
-      wireInner_();
+    }
+    container.querySelectorAll('[data-action="editTemplateDraftStep"]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        templateEditingStepIdx = Number(btn.dataset.idx);
+        refresh_();
+      });
+    });
+    container.querySelectorAll('[data-action="moveTemplateDraftStep"]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const idx = Number(btn.dataset.idx);
+        const dir = Number(btn.dataset.dir);
+        const swapWith = idx + dir;
+        if (swapWith < 0 || swapWith >= templateDraftSteps.length) return;
+        // Dependencies are stored by key, not position, so swapping two
+        // array slots needs no remapping at all, unlike the old
+        // position-based scheme. This is the whole reason for that switch.
+        [templateDraftSteps[idx], templateDraftSteps[swapWith]] = [templateDraftSteps[swapWith], templateDraftSteps[idx]];
+        if (templateEditingStepIdx === idx) templateEditingStepIdx = swapWith;
+        else if (templateEditingStepIdx === swapWith) templateEditingStepIdx = idx;
+        refresh_();
+      });
     });
     container.querySelectorAll('[data-action="removeTemplateDraftStep"]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const idx = Number(btn.dataset.idx);
+        const removedKey = templateDraftSteps[idx].key;
         templateDraftSteps.splice(idx, 1);
-        // Anything that depended on the removed step loses that one
-        // reference; anything referencing a step after it shifts down by
-        // one to stay pointed at the right row.
+        // Anything that depended on the removed step just loses that one
+        // reference, no index shifting needed since dependencies are
+        // keyed, not positional.
         templateDraftSteps.forEach((s) => {
-          s.dependsOnIdx = s.dependsOnIdx.filter((j) => j !== idx).map((j) => (j > idx ? j - 1 : j));
+          s.dependsOnKeys = s.dependsOnKeys.filter((k) => k !== removedKey);
         });
-        container.innerHTML = renderTemplateBuilder_();
-        wireInner_();
+        if (templateEditingStepIdx === idx) templateEditingStepIdx = null;
+        else if (templateEditingStepIdx != null && templateEditingStepIdx > idx) templateEditingStepIdx -= 1;
+        refresh_();
       });
     });
     container.querySelector('#tplSaveTemplate').addEventListener('click', () => {
@@ -1215,6 +1291,7 @@ function wireTemplateBuilder_(wrap) {
       templateDraftName = '';
       templateDraftSteps = [];
       templateDraftEditingId = null;
+      templateEditingStepIdx = null;
       if (isEditing) {
         const existingProjectCount = getTaskList().filter((t) => t.chip && !t.projectId && t.fromTemplateId === template.id).length;
         if (existingProjectCount > 0 && confirm(
@@ -1234,6 +1311,7 @@ function wireTemplateBuilder_(wrap) {
       templateDraftName = '';
       templateDraftSteps = [];
       templateDraftEditingId = null;
+      templateEditingStepIdx = null;
       render();
     });
   }
@@ -1330,10 +1408,12 @@ function wireTemplatePicker_(wrap) {
     saveTask(project);
     logEvent('created', project.id, { project: true, fromTemplate: template.id });
     // Create every step first so every one has a real id, THEN go back and
-    // wire up dependsOn from the template's dependsOnIdx (positions within
-    // the template, meaningless until each position has a real task behind
-    // it). realIds[i] is step i's actual task id.
-    const realIds = template.steps.map((stepDef, order) => {
+    // wire up dependsOn from the template's dependsOnKeys (keyed, not
+    // positional, so a step can depend on one added either before or
+    // after it in the template). keyToRealId maps each step's key to the
+    // real task id it just got.
+    const keyToRealId = {};
+    template.steps.forEach((stepDef, order) => {
       const due = (stepDef.hasDue && startDate) ? addDaysToDateStr(startDate, stepDef.dayOffset) : null;
       const step = newTask({
         title: stepDef.title,
@@ -1348,13 +1428,13 @@ function wireTemplatePicker_(wrap) {
       });
       saveTask(step);
       logEvent('created', step.id, { step: true, projectId: project.id });
-      return step.id;
+      keyToRealId[stepDef.key] = step.id;
     });
-    template.steps.forEach((stepDef, i) => {
-      if (!stepDef.dependsOnIdx || !stepDef.dependsOnIdx.length) return;
-      const dependsOn = stepDef.dependsOnIdx.map((j) => realIds[j]).filter(Boolean);
+    template.steps.forEach((stepDef) => {
+      if (!stepDef.dependsOnKeys || !stepDef.dependsOnKeys.length) return;
+      const dependsOn = stepDef.dependsOnKeys.map((k) => keyToRealId[k]).filter(Boolean);
       if (!dependsOn.length) return;
-      const step = getTask(realIds[i]);
+      const step = getTask(keyToRealId[stepDef.key]);
       saveTask(touchTask(step, { dependsOn }));
     });
     scheduleSync();
