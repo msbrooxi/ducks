@@ -759,6 +759,25 @@ observed (no access to her browser):
    and the checkbox rewrite makes a NEW instance of the same failure mode
    much harder to introduce going forward.
 
+**Round 18 (2026-10-02): the actual bug, finally confirmed working, but the
+new checkbox UI rendered badly.** A screenshot showed the dependency fix
+working (checkboxes toggling correctly), but tiny text, tiny checkboxes,
+and huge gaps between rows, the checkbox stranded at the far right edge of
+a full-width row instead of sitting next to its label. Root cause: `index.html`'s
+`<link rel="stylesheet">` for `app/styles.css` had NO cache-busting `?v=`
+query string, unlike every script tag and JS import (added back in Round 9),
+meaning the CSS itself could still be served stale from GitHub Pages'
+CDN even though the JS carrying the new checkbox markup was fresh. An old
+cached stylesheet with no `.dep-checklist`/`.dep-check-row` rules at all
+would leave those elements styled only by the generic `details.new-project
+label` rule (full width, column-flex-ish spacing), which matches exactly
+what the screenshot showed. Fixed the stylesheet link the same way the
+scripts already were. Also hardened the checkbox row CSS itself: scoped to
+`.dep-checklist .dep-check-row` specifically (not relying on overriding
+only `flex-direction` against a more generic rule), with explicit sizing
+(18px checkboxes, tighter row padding, no stray margins) so this can't
+drift the same way again even under a future caching hiccup.
+
 ## Build order
 0. **Test first:** throwaway Apps Script + Pages page. Stephanie tests from
    iPhone and a Samsung: write, read, kid submit. Stop and rethink if it fails.
