@@ -290,30 +290,60 @@ function kidNameForKey_(key) {
 
 // ---- Drive file helpers ----
 
+// getFoldersByName/getFilesByName don't promise their iteration order is
+// stable across separate calls. If more than one folder or file ever ended
+// up with the same name (easy to end up with by accident: re-running setup,
+// a test deployment, Drive briefly double-listing something), two calls a
+// moment apart could resolve to two DIFFERENT underlying file objects,
+// which would look exactly like data randomly vanishing and reappearing.
+// Picking the lowest file id breaks every tie the same way, every time, so
+// every call resolves to the same object regardless of how many duplicates
+// exist, until they're manually cleaned up.
+function pickStable_(iterator) {
+  var all = [];
+  while (iterator.hasNext()) all.push(iterator.next());
+  if (all.length === 0) return null;
+  all.sort(function (a, b) { return a.getId() < b.getId() ? -1 : a.getId() > b.getId() ? 1 : 0; });
+  return all[0];
+}
+
 function getFolder_() {
-  var folders = DriveApp.getFoldersByName(FOLDER_NAME);
-  if (folders.hasNext()) return folders.next();
+  var folder = pickStable_(DriveApp.getFoldersByName(FOLDER_NAME));
+  if (folder) return folder;
   return DriveApp.createFolder(FOLDER_NAME);
 }
 
 function readJsonFile_(filename, fallback) {
   var folder = getFolder_();
-  var files = folder.getFilesByName(filename);
-  if (!files.hasNext()) return fallback;
-  var content = files.next().getBlob().getDataAsString();
+  var file = pickStable_(folder.getFilesByName(filename));
+  if (!file) return fallback; // genuinely doesn't exist yet, first run
+  var content = file.getBlob().getDataAsString();
+  if (!content) return fallback; // a brand new, never-written file
   try {
     return JSON.parse(content);
   } catch (e) {
-    return fallback;
+    // The file exists and has content, but it didn't parse. Silently
+    // falling back to an empty store here would make handleSync_ treat
+    // this as "no tasks exist yet" and then WRITE BACK a store containing
+    // only whatever this one request happens to be pushing, discarding
+    // everything else ever saved. That is the most likely mechanism behind
+    // "everything looked wiped, then came back a minute later": a
+    // transient bad read got treated as real, emptied the file, and a
+    // later request (possibly from a device with its own full local copy
+    // still dirty) wrote the real data back. Failing loudly here instead
+    // means a bad read just fails this one sync, client-side data is
+    // untouched, and the next sync tries again rather than risking an
+    // overwrite.
+    throw new Error('Could not read ' + filename + ' (refusing to proceed rather than risk overwriting good data): ' + e);
   }
 }
 
 function writeJsonFile_(filename, obj) {
   var folder = getFolder_();
-  var files = folder.getFilesByName(filename);
+  var file = pickStable_(folder.getFilesByName(filename));
   var json = JSON.stringify(obj);
-  if (files.hasNext()) {
-    files.next().setContent(json);
+  if (file) {
+    file.setContent(json);
   } else {
     folder.createFile(filename, json, MimeType.PLAIN_TEXT);
   }

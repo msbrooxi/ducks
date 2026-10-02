@@ -5,7 +5,7 @@ import {
   getConn, getTasks, replaceAllTasks, getSettings, replaceSettings,
   getDirtyTaskIds, clearDirtyTasks, markTaskDirty, isSettingsDirty, clearSettingsDirty,
   getEventQueue, clearEventQueue, backfillFieldUpdatedAt
-} from './store.js?v=2026-10-02.6';
+} from './store.js?v=2026-10-02.7';
 
 let pushTimer = null;
 let syncing = false;

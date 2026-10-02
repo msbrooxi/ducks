@@ -3,16 +3,16 @@ import {
   getLocal, saveLocal, getConn, saveConn, isPastDue, ducksDayDate,
   logEvent, CATEGORIES, SIZES, nowIso,
   getProjectList, getSteps, projectProgress
-} from './store.js?v=2026-10-02.6';
-import { scheduleSync, syncNow, onSyncStatus, startBackgroundSync, exportEventLog } from './sync.js?v=2026-10-02.6';
-import { doNextList, minutesFilter, fiveDucksFill, sortForList, LIST_SORTS, DEFAULT_SORT_DIR, SORT_DIR_LABELS, isBlocked } from './rank.js?v=2026-10-02.6';
-import { playQuack, playParade } from './quack.js?v=2026-10-02.6';
-import { computeFirstDue, computeNextDue, FREQUENCIES, recurrenceLabel, WEEKDAY_NAMES, MONTH_NAMES } from './recurrence.js?v=2026-10-02.6';
+} from './store.js?v=2026-10-02.7';
+import { scheduleSync, syncNow, onSyncStatus, startBackgroundSync, exportEventLog } from './sync.js?v=2026-10-02.7';
+import { doNextList, minutesFilter, fiveDucksFill, sortForList, LIST_SORTS, DEFAULT_SORT_DIR, SORT_DIR_LABELS, isBlocked } from './rank.js?v=2026-10-02.7';
+import { playQuack, playParade } from './quack.js?v=2026-10-02.7';
+import { computeFirstDue, computeNextDue, FREQUENCIES, recurrenceLabel, WEEKDAY_NAMES, MONTH_NAMES } from './recurrence.js?v=2026-10-02.7';
 
 // Bumped by hand on every shipped change. Shown in Settings so it's a
 // one-glance way to tell whether a device is actually running the latest
 // build, instead of guessing from a stale cached copy.
-const APP_BUILD = '2026-10-02.6';
+const APP_BUILD = '2026-10-02.7';
 
 let activeTab = 'home';
 let expandedTaskId = null;
@@ -177,7 +177,7 @@ function scheduleFieldSave(id, field, value) {
   }, 600);
 }
 
-function addQuickTask(title, { due, size, category, ducks } = {}) {
+function addQuickTask(title, { due, size, category, ducks, projectId } = {}) {
   const trimmed = title.trim();
   if (!trimmed) return;
   const t = newTask({
@@ -185,10 +185,12 @@ function addQuickTask(title, { due, size, category, ducks } = {}) {
     due: due || null,
     size: size || null,
     category: category || 'admin',
-    ducks: ducks ? Number(ducks) : null
+    ducks: ducks ? Number(ducks) : null,
+    projectId: projectId || null,
+    order: projectId ? getSteps(projectId).length : null
   });
   saveTask(t);
-  logEvent('created', t.id);
+  logEvent('created', t.id, projectId ? { projectId } : {});
   scheduleSync();
   render();
 }
@@ -323,6 +325,10 @@ function renderHeader() {
           <select id="quickAddCategory" title="Category">
             ${CATEGORIES.map((c) => `<option value="${c.id}" ${c.id === 'admin' ? 'selected' : ''}>${c.label}</option>`).join('')}
           </select>
+          <select id="quickAddProject" title="Project">
+            <option value="">No project</option>
+            ${getProjectList().map((p) => `<option value="${p.id}">${esc(p.chip.nickname)}</option>`).join('')}
+          </select>
           <button type="submit">Add</button>
         </div>
       </form>
@@ -335,12 +341,14 @@ function renderHeader() {
     const size = header.querySelector('#quickAddSize');
     const category = header.querySelector('#quickAddCategory');
     const ducks = header.querySelector('#quickAddDucks');
-    addQuickTask(input.value, { due: due.value, size: size.value, category: category.value, ducks: ducks.value });
+    const project = header.querySelector('#quickAddProject');
+    addQuickTask(input.value, { due: due.value, size: size.value, category: category.value, ducks: ducks.value, projectId: project.value });
     input.value = '';
     due.value = '';
     size.value = '';
     category.value = 'admin';
     ducks.value = '';
+    project.value = '';
     input.focus();
   });
   return header;
@@ -370,7 +378,11 @@ function renderNav() {
 // go, rather than the row just maxing out and sitting there. Keeps growing
 // by fives for as long as she keeps completing tasks that day.
 function fiveDucksRow(fill) {
-  const slots = fill <= 0 ? 5 : 5 * Math.ceil((fill + 1) / 5);
+  // 5 is the daily floor, not a hard ceiling: once all 5 are lit, exactly
+  // one more empty duck appears (not a whole new batch of 5), and another
+  // each time the newest one gets lit too, so the row grows one at a time
+  // to match what's actually been done instead of jumping ahead in blocks.
+  const slots = Math.max(5, fill + 1);
   const pct = Math.min(100, (fill / slots) * 100);
   return `
     <div class="ducks-row" title="${fill} of ${slots} ducks today">
@@ -663,6 +675,27 @@ function attachGlobalDelegation() {
 function isDebouncedField_(el) {
   return el.tagName === 'TEXTAREA' ||
     (el.tagName === 'INPUT' && (el.type === 'text' || el.type === 'url' || el.type === 'date'));
+}
+
+// Broader than isDebouncedField_ on purpose: that one only covers the
+// task-editor fields that specifically autosave on a debounce. This one is
+// for "is she actively composing something anywhere on screen right now",
+// used to decide whether a background sync is allowed to re-render. It
+// matters most for things like the "Add a step..." box in a project and
+// the main quick-add bar: neither of those are task-editor fields (so
+// isDebouncedField_ said no), which meant a background sync landing while
+// she was mid-typing a NEW step's title (not yet clicked Add, so nothing
+// had been saved yet to lose from storage, but the render tore down and
+// rebuilt the whole screen, wiping out whatever was sitting unsent in that
+// input) could silently eat a draft she hadn't submitted yet. This is the
+// most likely explanation for project steps she'd typed going missing
+// after adding several in a row.
+function isTypingAnywhere_() {
+  const el = document.activeElement;
+  if (!el) return false;
+  if (el.tagName === 'TEXTAREA') return true;
+  if (el.tagName === 'INPUT') return ['text', 'url', 'date', 'number'].includes(el.type);
+  return false;
 }
 
 function renderInbox(tasks) {
@@ -1048,6 +1081,7 @@ function renderProjectDetail(project) {
               ${s.due ? `<span class="chip due">due ${fmtDue(s.due)}</span>` : ''}
               ${s.ducks ? `<span class="chip">${duckIcons(s.ducks, 14)}</span>` : ''}
               ${s.size ? `<span class="chip">${sizeLabel(s.size)}</span>` : ''}
+              ${(() => { const b = blockedInfo_(s); return b ? `<span class="chip blocked">waiting on ${esc(b)}</span>` : ''; })()}
             </div>
             <div class="card-actions">
               ${s.status === 'done'
@@ -1063,7 +1097,21 @@ function renderProjectDetail(project) {
 
       <form id="addStepForm" class="quickadd" style="margin-top:16px">
         <input id="addStepInput" type="text" placeholder="Add a step..." autocomplete="off">
-        <button type="submit">Add</button>
+        <div class="quickadd-extra">
+          <select id="addStepDucks" title="Ducks (importance)">
+            <option value="">Ducks</option>
+            ${[1, 2, 3, 4, 5].map((n) => `<option value="${n}" ${project.ducks === n ? 'selected' : ''}>${n} duck${n > 1 ? 's' : ''}</option>`).join('')}
+          </select>
+          <select id="addStepSize" title="Duration">
+            <option value="">Duration</option>
+            ${SIZES.map((s) => `<option value="${s.id}">${sizeLabel(s.id)}</option>`).join('')}
+          </select>
+          <input id="addStepDue" type="date" title="Due date">
+          <select id="addStepCategory" title="Category">
+            ${CATEGORIES.map((c) => `<option value="${c.id}" ${c.id === (project.category || 'admin') ? 'selected' : ''}>${c.label}</option>`).join('')}
+          </select>
+          <button type="submit">Add</button>
+        </div>
       </form>
     </section>
   `);
@@ -1075,11 +1123,21 @@ function renderProjectDetail(project) {
     const title = input.value.trim();
     if (!title) return;
     const order = getSteps(project.id).length;
-    const s = newTask({ title, projectId: project.id, order });
+    const ducksVal = wrap.querySelector('#addStepDucks').value;
+    const s = newTask({
+      title,
+      projectId: project.id,
+      order,
+      due: wrap.querySelector('#addStepDue').value || null,
+      ducks: ducksVal ? Number(ducksVal) : null,
+      size: wrap.querySelector('#addStepSize').value || null,
+      category: wrap.querySelector('#addStepCategory').value || 'admin'
+    });
     saveTask(s);
     logEvent('created', s.id, { step: true, projectId: project.id });
     scheduleSync();
     input.value = '';
+    input.focus();
     render();
   });
 
@@ -1389,7 +1447,7 @@ onSyncStatus((status, detail) => {
   // genuinely changed, and not while she's actively mid-keystroke in a
   // text field, so this never interrupts typing, just keeps a screen
   // that's sitting idle honest.
-  if (status === 'ok' && detail && detail.changed && !isDebouncedField_(document.activeElement)) {
+  if (status === 'ok' && detail && detail.changed && !isTypingAnywhere_()) {
     render();
   }
 });

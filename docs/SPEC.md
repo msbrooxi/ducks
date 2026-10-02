@@ -546,6 +546,52 @@ only re-renders when its fingerprint check finds something actually
 changed; a button she just pressed needs to visibly do something either
 way, so this bypasses that check).
 
+**Round 10 (2026-10-02): a real Drive-resolution bug, a render-while-typing
+bug, and project/intake polish.**
+
+- **"Everything looked wiped, then came back a minute later."** Found a
+  real structural weak point in Code.gs: `getFolder_`/`readJsonFile_`/
+  `writeJsonFile_` all resolved the "Ducks" folder and the data file BY
+  NAME, on every call, via `getFoldersByName`/`getFilesByName().next()`.
+  Google doesn't promise that returns the same object on two separate
+  calls if more than one match ever existed (easy to end up with by
+  accident: re-running setup, a test deployment). Two calls a moment apart
+  resolving to two different file objects would look exactly like data
+  randomly vanishing and reappearing. Added `pickStable_()`, which sorts
+  all matches by file id and always picks the same one, so every call
+  resolves identically regardless of how many duplicates exist. Also
+  hardened `readJsonFile_` to throw (failing the sync, touching nothing)
+  instead of silently returning an empty store on a parse failure: the old
+  behavior would make `handleSync_` treat a bad read as "no tasks exist
+  yet" and write back a store containing only whatever that one request
+  happened to be pushing, discarding everything else. **Needs a Code.gs
+  redeploy.**
+- **Project steps typed and then lost after adding several in a row.**
+  Found the mechanism: the "don't interrupt while typing" check before a
+  background-sync re-render (`onSyncStatus` in main.js) only covered the
+  task-editor's specific debounced fields (`isDebouncedField_`), not the
+  "Add a step..." box in a project or the main quick-add bar. A background
+  sync landing while she was mid-typing a step's title she hadn't
+  submitted yet would tear down and rebuild the whole screen, wiping out
+  that unsent draft. Replaced with `isTypingAnywhere_()`, which protects
+  any focused text-like input or textarea on screen, not just the ones
+  main.js already knew to treat specially.
+- **Duck meter now grows one at a time** instead of jumping by groups of
+  5: `fiveDucksRow()` uses `slots = Math.max(5, fill + 1)`, always exactly
+  one empty duck ahead of however many are actually done.
+- **Project step intake now has due date, ducks, size, and category**,
+  matching the main quick-add bar, with ducks pre-selected to the
+  project's own ducks rating (editable) and category pre-selected to the
+  project's category. Goal is nothing has to be edited after the fact
+  unless she wants to change it.
+- **Dependency ("waiting on") chip was missing from project step cards.**
+  `renderProjectDetail()` has always used its own simplified card markup
+  rather than the shared `taskCard()`, and that markup never included the
+  blocked-by chip `taskCard()` has had since dependencies shipped. Added.
+- **The generic quick-add bar can now assign a new task directly to a
+  project** via a new "Project" dropdown, instead of only being able to
+  add steps from inside a project's own page.
+
 ## Build order
 0. **Test first:** throwaway Apps Script + Pages page. Stephanie tests from
    iPhone and a Samsung: write, read, kid submit. Stop and rethink if it fails.
