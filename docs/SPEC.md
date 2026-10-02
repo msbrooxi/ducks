@@ -18,6 +18,18 @@
 | Five-ducks surprise | Duck parade animation + double quack (unless muted) |
 | Delete | Goes to the "Duck Pond" (restorable) for 30 days, then purged. Event log keeps the record |
 
+## Backlog (not started, don't build without being asked)
+Things Stephanie has explicitly flagged for later, intentionally deferred
+while the basics get solid. Check this before starting unrelated work in
+case something here has quietly become relevant.
+- **A more sophisticated recurrence system** (flagged 2026-10-02, after
+  fixing the quarterly day-37 bug in Round 20). The current scheme is a
+  single day-number per frequency (weekly/biweekly day-of-week, monthly/
+  quarterly/annually day-of-month-or-quarter). Not yet scoped: things like
+  "the 2nd Tuesday of the month," "last business day," "every N months,"
+  or whatever else comes up once more real recurring tasks have been lived
+  with. Revisit once asked, not proactively.
+
 ## Time rules
 - All dates are evaluated in `America/New_York`.
 - A "Ducks day" runs 3:00 AM ET to 2:59 AM ET the next calendar day. A task
