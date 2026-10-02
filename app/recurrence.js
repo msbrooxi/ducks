@@ -28,12 +28,24 @@ function monthlyOccurrence_(year, monthIndex0, day) {
   return `${year}-${String(monthIndex0 + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 }
 
+function daysInQuarter_(year, quarterIndex0) {
+  const startMonth = quarterIndex0 * 3;
+  const start = Date.UTC(year, startMonth, 1);
+  const end = Date.UTC(year, startMonth + 3, 1);
+  return Math.round((end - start) / 86400000);
+}
+
 // Quarter index 0..3 (0 = Jan-Mar). "Day N of the quarter" counts the
-// quarter's first calendar day as day 1.
+// quarter's first calendar day as day 1. Clamped to however many days that
+// particular quarter actually has (90-92, depending on which quarter and
+// leap years), the same way monthlyOccurrence_ clamps "day 31" down to the
+// 28th/29th/30th in a shorter month, rather than silently overflowing into
+// the next quarter.
 function quarterlyOccurrence_(year, quarterIndex0, day) {
   const startMonth = quarterIndex0 * 3;
+  const clamped = Math.min(day, daysInQuarter_(year, quarterIndex0));
   const d = new Date(Date.UTC(year, startMonth, 1));
-  d.setUTCDate(d.getUTCDate() + (day - 1));
+  d.setUTCDate(d.getUTCDate() + (clamped - 1));
   return d.toISOString().slice(0, 10);
 }
 
@@ -59,15 +71,20 @@ function nextWeekdayOnOrAfter_(dateStr, weekday) {
 }
 
 // 'kind' tells main.js which input fields to show for this frequency:
-// 'weekday' = a day-of-week picker, 'dayOfMonth' = the existing 1-31
-// number input, 'monthDay' = a month picker plus a 1-31 number input.
-// Listed in increasing duration order.
+// 'weekday' = a day-of-week picker, 'dayOfMonth' = a day number input,
+// 'monthDay' = a month picker plus a day number input. 'maxDay' is that
+// number input's actual valid range: a month never has more than 31 days,
+// but a quarter has up to 92, and the day input used to be hardcoded to
+// max="31" for every "dayOfMonth" frequency, which made it impossible to
+// set up a quarterly task on, say, day 37 (entering "file the sales tax
+// report on the 37th day of the quarter" is exactly the kind of thing this
+// frequency exists for). Listed in increasing duration order.
 export const FREQUENCIES = [
   { id: 'weekly', label: 'Weekly', kind: 'weekday', dayHint: 'Day of the week' },
   { id: 'biweekly', label: 'Every 2 weeks', kind: 'weekday', dayHint: 'Day of the week' },
-  { id: 'monthly', label: 'Monthly', kind: 'dayOfMonth', dayHint: 'Day of the month (1-31)' },
-  { id: 'quarterly', label: 'Quarterly', kind: 'dayOfMonth', dayHint: "Day of the quarter, counting the quarter's first day as day 1" },
-  { id: 'annually', label: 'Annually', kind: 'monthDay', dayHint: 'Day of the month (1-31)' }
+  { id: 'monthly', label: 'Monthly', kind: 'dayOfMonth', dayHint: 'Day of the month (1-31)', maxDay: 31 },
+  { id: 'quarterly', label: 'Quarterly', kind: 'dayOfMonth', dayHint: "Day of the quarter, counting the quarter's first day as day 1 (up to 92; past the quarter's actual last day rounds down to it)", maxDay: 92 },
+  { id: 'annually', label: 'Annually', kind: 'monthDay', dayHint: 'Day of the month (1-31)', maxDay: 31 }
 ];
 
 // The next occurrence strictly after afterDateStr's period, ignoring

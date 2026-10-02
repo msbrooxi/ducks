@@ -834,6 +834,29 @@ running the app in a browser afterward rather than just reading the diff.
   batch into whenever the next real Code.gs change happens rather than
   redeploying just for this).
 
+**Round 20 (2026-10-02): quarterly recurrence capped at day 31.** Entering
+"day 37 of the quarter" (e.g. a tax filing deadline) was rejected by the day
+input's `max="31"`, hardcoded once for the "dayOfMonth" `kind` and reused
+unchanged for quarterly, which can legitimately run up to 92 days. The
+underlying date math (`quarterlyOccurrence_` in recurrence.js) already
+handled day 37 correctly, it was purely a UI validation ceiling. Fixed by
+giving each `FREQUENCIES` entry its own `maxDay` (31 for monthly/annually,
+92 for quarterly) and using it for both the `<input max>` and the
+create-handler's validation instead of a shared hardcoded 31. Also noticed
+and fixed a related latent bug while in there: `quarterlyOccurrence_` had no
+clamping at all (unlike `monthlyOccurrence_`, which clamps day 31 down to
+the 28th/29th/30th in a short month), so a day past a given quarter's
+actual length (Q1 is only 90 or 91 days) would have silently overflowed
+into the next quarter with no warning. Added `daysInQuarter_` and clamping
+to match. Verified with direct date-math tests (day 37 lands correctly in
+both Q1 and the next quarter it rolls to) and a live Playwright run
+confirming the UI now accepts and saves day 37 for a quarterly task.
+
+Noted for later: Stephanie flagged that recurrence needs a more
+sophisticated way to specify itself eventually (this round just widens the
+existing day-number scheme to the range it should always have allowed, it
+doesn't add new recurrence shapes).
+
 ## Build order
 0. **Test first:** throwaway Apps Script + Pages page. Stephanie tests from
    iPhone and a Samsung: write, read, kid submit. Stop and rethink if it fails.

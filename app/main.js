@@ -3,21 +3,21 @@ import {
   getLocal, saveLocal, getConn, saveConn, isPastDue, ducksDayDate,
   logEvent, CATEGORIES, SIZES, nowIso,
   getProjectList, getSteps, projectProgress
-} from './store.js?v=2026-10-02.16';
-import { scheduleSync, syncNow, onSyncStatus, startBackgroundSync, exportEventLog } from './sync.js?v=2026-10-02.16';
-import { doNextList, minutesFilter, fiveDucksFill, sortForList, LIST_SORTS, DEFAULT_SORT_DIR, SORT_DIR_LABELS, isBlocked } from './rank.js?v=2026-10-02.16';
-import { playQuack, playParade } from './quack.js?v=2026-10-02.16';
-import { computeFirstDue, computeNextDue, FREQUENCIES, recurrenceLabel, WEEKDAY_NAMES, MONTH_NAMES } from './recurrence.js?v=2026-10-02.16';
+} from './store.js?v=2026-10-02.17';
+import { scheduleSync, syncNow, onSyncStatus, startBackgroundSync, exportEventLog } from './sync.js?v=2026-10-02.17';
+import { doNextList, minutesFilter, fiveDucksFill, sortForList, LIST_SORTS, DEFAULT_SORT_DIR, SORT_DIR_LABELS, isBlocked } from './rank.js?v=2026-10-02.17';
+import { playQuack, playParade } from './quack.js?v=2026-10-02.17';
+import { computeFirstDue, computeNextDue, FREQUENCIES, recurrenceLabel, WEEKDAY_NAMES, MONTH_NAMES } from './recurrence.js?v=2026-10-02.17';
 import {
   createTemplateFromProject, editTemplate, deleteTemplate,
   renderTemplatePickerBody_, renderTemplateManageList_, renderTemplateBuilder_,
   wireTemplatePicker_, wireTemplateBuilder_, templateDraftIsOpen, templateBuilderSummary
-} from './templates.js?v=2026-10-02.16';
+} from './templates.js?v=2026-10-02.17';
 
 // Bumped by hand on every shipped change. Shown in Settings so it's a
 // one-glance way to tell whether a device is actually running the latest
 // build, instead of guessing from a stale cached copy.
-const APP_BUILD = '2026-10-02.16';
+const APP_BUILD = '2026-10-02.17';
 
 let activeTab = 'home';
 let expandedTaskId = null;
@@ -1103,8 +1103,11 @@ function renderDone(tasks) {
 
 // The "+ New recurring task" day-selection fields change shape per
 // frequency: weekly/biweekly need a day-of-week picker, monthly/quarterly
-// need the existing 1-31 number input, annually needs both a month picker
-// and a day number. Swapped in via innerHTML when the frequency changes.
+// need a day number (each frequency's own maxDay, NOT a hardcoded 31: a
+// quarter can run up to 92 days, so "day 37 of the quarter" used to be
+// rejected by a max="31" that only ever made sense for monthly), annually
+// needs both a month picker and a day number. Swapped in via innerHTML
+// when the frequency changes.
 function renderRecDayFields_(freqId) {
   const f = FREQUENCIES.find((x) => x.id === freqId) || FREQUENCIES[0];
   if (f.kind === 'weekday') {
@@ -1117,11 +1120,11 @@ function renderRecDayFields_(freqId) {
       <select id="recMonth">${MONTH_NAMES.map((name, i) => `<option value="${i + 1}">${name}</option>`).join('')}</select>
     </label>
     <label>${f.dayHint}
-      <input id="recDay" type="number" min="1" max="31" value="1">
+      <input id="recDay" type="number" min="1" max="${f.maxDay || 31}" value="1">
     </label>`;
   }
   return `<label>${f.dayHint}
-    <input id="recDay" type="number" min="1" max="31" value="1">
+    <input id="recDay" type="number" min="1" max="${f.maxDay || 31}" value="1">
   </label>`;
 }
 
@@ -1257,10 +1260,10 @@ function renderSettings(settings) {
     if (freqDef.kind === 'weekday') {
       recurrence = { freq: freqDef.id, day }; // 0-6, always valid from the <select>
     } else if (freqDef.kind === 'monthDay') {
-      if (!day || day < 1 || day > 31) { alert('Give it a day of the month from 1 to 31.'); return; }
+      if (!day || day < 1 || day > freqDef.maxDay) { alert(`Give it a day of the month from 1 to ${freqDef.maxDay}.`); return; }
       recurrence = { freq: freqDef.id, month: Number(wrap.querySelector('#recMonth').value), day };
     } else {
-      if (!day || day < 1 || day > 31) { alert('Give it a day number from 1 to 31.'); return; }
+      if (!day || day < 1 || day > freqDef.maxDay) { alert(`Give it a day number from 1 to ${freqDef.maxDay}.`); return; }
       recurrence = { freq: freqDef.id, day };
     }
     const due = computeFirstDue(recurrence, ducksDayDate());
