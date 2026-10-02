@@ -119,32 +119,68 @@ function compareDucksDesc_(a, b) {
   const da = a.ducks ?? -1, db = b.ducks ?? -1; // unrated sinks to the bottom
   return db - da;
 }
+function compareCreatedAsc_(a, b) {
+  return (a.createdAt || '') < (b.createdAt || '') ? -1 : (a.createdAt || '') > (b.createdAt || '') ? 1 : 0;
+}
 
 export const LIST_SORTS = [
   { id: 'date', label: 'Date' },
   { id: 'ducks', label: 'Ducks' },
-  { id: 'duration', label: 'Duration' }
+  { id: 'duration', label: 'Duration' },
+  { id: 'created', label: 'Recently added' }
 ];
 
-// 'date': soonest due date first, no date last.
-// 'ducks': most ducks first, not-rated last.
-// 'duration': shortest t-shirt size first, no size last; ties broken by
-// soonest due date, for banging out a bunch of little tasks when there's
-// spare time.
-export function sortForList(tasks, mode) {
-  const list = tasks.slice();
+// Each mode has a "natural" default direction (the one it used to be
+// hardcoded to): soonest-first for date, most-ducks-first for ducks,
+// shortest-first for duration, newest-first for recently-added. 'asc'/
+// 'desc' here mean relative to that natural direction, not literally
+// ascending/descending in every case, since "ascending ducks" read
+// backwards from what the direction toggle should mean to her: the
+// default state of every sort should be what it already was.
+export const DEFAULT_SORT_DIR = { date: 'asc', ducks: 'desc', duration: 'asc', created: 'desc' };
+export const SORT_DIR_LABELS = {
+  date: { asc: 'Soonest first', desc: 'Latest first' },
+  ducks: { asc: 'Fewest first', desc: 'Most first' },
+  duration: { asc: 'Shortest first', desc: 'Longest first' },
+  created: { asc: 'Oldest first', desc: 'Newest first' }
+};
+
+// 'date': soonest due date first, no date last (reversed: latest first).
+// 'ducks': most ducks first by default, not-rated always last either way.
+// 'duration': shortest t-shirt size first by default, no size last either
+// way; ties broken by soonest due date.
+// 'created': newest first by default (so "what did I just add" is a
+// glance away), oldest first when reversed.
+// A task with no value for the chosen field (no due date, no ducks, no
+// size) always sinks to the bottom regardless of direction: there's no
+// meaningful "last" vs "first" for a blank, and flipping that too would
+// just be confusing.
+export function sortForList(tasks, mode, direction = DEFAULT_SORT_DIR[mode] || 'asc') {
+  let hasValue, cmp;
   if (mode === 'ducks') {
-    list.sort((a, b) => compareDucksDesc_(a, b) || compareDue_(a, b));
+    hasValue = (t) => t.ducks != null;
+    cmp = (a, b) => (a.ducks - b.ducks) || compareCreatedAsc_(a, b);
   } else if (mode === 'duration') {
-    list.sort((a, b) => {
-      const sa = a.size ? SIZE_ORDER[a.size] : 99;
-      const sb = b.size ? SIZE_ORDER[b.size] : 99;
-      return sa !== sb ? sa - sb : compareDue_(a, b);
-    });
+    hasValue = (t) => !!t.size;
+    cmp = (a, b) => (SIZE_ORDER[a.size] - SIZE_ORDER[b.size]) || compareDue_(a, b);
+  } else if (mode === 'created') {
+    hasValue = () => true;
+    cmp = compareCreatedAsc_;
   } else {
-    list.sort((a, b) => compareDue_(a, b) || compareDucksDesc_(a, b));
+    hasValue = (t) => !!t.due;
+    cmp = (a, b) => compareDue_(a, b) || compareDucksDesc_(a, b);
   }
-  return list;
+  const withValue = tasks.filter(hasValue).sort(cmp);
+  const withoutValue = tasks.filter((t) => !hasValue(t));
+  // Every comparator above is written in its own plain ascending sense
+  // (fewest ducks, shortest duration, soonest date, oldest created first),
+  // and the "Fewest/Shortest/Soonest/Oldest first" label in
+  // SORT_DIR_LABELS always corresponds to direction === 'asc', so this is
+  // just: asc uses the comparator as written, desc reverses it. Which
+  // direction is pre-selected by default per mode (DEFAULT_SORT_DIR) is a
+  // separate, UI-only concern handled by the caller.
+  const ordered = direction === 'asc' ? withValue : withValue.reverse();
+  return ordered.concat(withoutValue);
 }
 
 // Revised 2026-10-02: this used to weight each completed task's contribution

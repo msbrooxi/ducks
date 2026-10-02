@@ -5,19 +5,22 @@ import {
   getProjectList, getSteps, projectProgress
 } from './store.js';
 import { scheduleSync, syncNow, onSyncStatus, startBackgroundSync, exportEventLog } from './sync.js';
-import { doNextList, minutesFilter, fiveDucksFill, sortForList, LIST_SORTS, isBlocked } from './rank.js';
+import { doNextList, minutesFilter, fiveDucksFill, sortForList, LIST_SORTS, DEFAULT_SORT_DIR, SORT_DIR_LABELS, isBlocked } from './rank.js';
 import { playQuack, playParade } from './quack.js';
 import { computeFirstDue, computeNextDue, FREQUENCIES, recurrenceLabel } from './recurrence.js';
 
 // Bumped by hand on every shipped change. Shown in Settings so it's a
 // one-glance way to tell whether a device is actually running the latest
 // build, instead of guessing from a stale cached copy.
-const APP_BUILD = '2026-10-02.3';
+const APP_BUILD = '2026-10-02.4';
 
 let activeTab = 'home';
 let expandedTaskId = null;
 let minutesQuery = null;
-let listFilters = { category: '', size: '', ducks: '', sort: 'date' };
+let listFilters = { category: '', size: '', ducks: '', sort: 'date', dir: {} };
+function currentListDir_() {
+  return listFilters.dir[listFilters.sort] || DEFAULT_SORT_DIR[listFilters.sort] || 'asc';
+}
 let lastFiveDucksWhole = -1;
 let openProjectId = null;
 
@@ -362,12 +365,17 @@ function renderNav() {
   return nav;
 }
 
+// Five ducks is the daily goal, not a hard ceiling: once all 5 are filled,
+// 5 more empty ones appear so finishing a big day still has somewhere to
+// go, rather than the row just maxing out and sitting there. Keeps growing
+// by fives for as long as she keeps completing tasks that day.
 function fiveDucksRow(fill) {
-  const pct = Math.min(100, (fill / 5) * 100);
+  const slots = fill <= 0 ? 5 : 5 * Math.ceil((fill + 1) / 5);
+  const pct = Math.min(100, (fill / slots) * 100);
   return `
-    <div class="ducks-row" title="${fill.toFixed(2)} of 5 ducks today">
-      <div class="ducks-row-base">${duckIcons(5, 32)}</div>
-      <div class="ducks-row-fill" style="width:${pct}%">${duckIcons(5, 32)}</div>
+    <div class="ducks-row" title="${fill} of ${slots} ducks today">
+      <div class="ducks-row-base">${duckIcons(slots, 32)}</div>
+      <div class="ducks-row-fill" style="width:${pct}%">${duckIcons(slots, 32)}</div>
     </div>
   `;
 }
@@ -682,11 +690,11 @@ function renderInbox(tasks) {
   `);
 }
 
-const SORT_HEADINGS = {
-  date: 'Sorted by date',
-  ducks: 'Sorted by ducks',
-  duration: 'Sorted by duration, shortest first'
-};
+function sortHeading_() {
+  const label = LIST_SORTS.find((s) => s.id === listFilters.sort).label;
+  const dirLabel = (SORT_DIR_LABELS[listFilters.sort] || {})[currentListDir_()] || '';
+  return `Sorted by ${label.toLowerCase()}${dirLabel ? ', ' + dirLabel.toLowerCase() : ''}`;
+}
 
 function renderList(tasks, settings, today) {
   // Project "head" tasks are containers, not to-dos, they live on the
@@ -711,10 +719,10 @@ function renderList(tasks, settings, today) {
     rest.forEach((t) => { byId[t.id] = t; });
     const kept = frozenListOrder.map((id) => byId[id]).filter(Boolean);
     const keptIds = new Set(kept.map((t) => t.id));
-    const fresh = sortForList(rest.filter((t) => !keptIds.has(t.id)), listFilters.sort);
+    const fresh = sortForList(rest.filter((t) => !keptIds.has(t.id)), listFilters.sort, currentListDir_());
     rest = kept.concat(fresh);
   } else {
-    rest = sortForList(rest, listFilters.sort);
+    rest = sortForList(rest, listFilters.sort, currentListDir_());
   }
   frozenListOrder = rest.map((t) => t.id);
   frozenListForTaskId = expandedTaskId;
@@ -727,6 +735,9 @@ function renderList(tasks, settings, today) {
       <h2>List</h2>
       <div class="filters">
         <select id="fSort">${LIST_SORTS.map((s) => `<option value="${s.id}" ${listFilters.sort === s.id ? 'selected' : ''}>Sort: ${s.label}</option>`).join('')}</select>
+        <button type="button" id="fDir" class="dir-toggle" title="Click to flip the sort direction">
+          ${currentListDir_() === 'asc' ? '&#8593;' : '&#8595;'} ${(SORT_DIR_LABELS[listFilters.sort] || {})[currentListDir_()] || ''}
+        </button>
         <select id="fCategory"><option value="">All categories</option>${CATEGORIES.map((c) => `<option value="${c.id}" ${listFilters.category === c.id ? 'selected' : ''}>${c.label}</option>`).join('')}</select>
         <select id="fSize"><option value="">All sizes</option>${SIZES.map((s) => `<option value="${s.id}" ${listFilters.size === s.id ? 'selected' : ''}>${s.label}</option>`).join('')}</select>
         <select id="fDucks">
@@ -736,7 +747,7 @@ function renderList(tasks, settings, today) {
         </select>
       </div>
       ${pastDue.length ? `<h3>Past due</h3><div class="cards">${pastDue.map((t) => taskCard(t, today)).join('')}</div>` : ''}
-      <h3>${SORT_HEADINGS[listFilters.sort] || SORT_HEADINGS.date}</h3>
+      <h3>${sortHeading_()}</h3>
       <div class="cards">
         ${rest.length ? rest.map((t) => taskCard(t, today)).join('') : '<p class="empty">Nothing matches these filters.</p>'}
       </div>
@@ -744,6 +755,9 @@ function renderList(tasks, settings, today) {
   `);
   const resortAnd_ = (fn) => (e) => { fn(e); frozenListOrder = null; render(); };
   wrap.querySelector('#fSort').addEventListener('change', resortAnd_((e) => { listFilters.sort = e.target.value; }));
+  wrap.querySelector('#fDir').addEventListener('click', resortAnd_(() => {
+    listFilters.dir[listFilters.sort] = currentListDir_() === 'asc' ? 'desc' : 'asc';
+  }));
   wrap.querySelector('#fCategory').addEventListener('change', resortAnd_((e) => { listFilters.category = e.target.value; }));
   wrap.querySelector('#fSize').addEventListener('change', resortAnd_((e) => { listFilters.size = e.target.value; }));
   wrap.querySelector('#fDucks').addEventListener('change', resortAnd_((e) => { listFilters.ducks = e.target.value; }));
@@ -824,7 +838,7 @@ function renderProjects() {
 
       <details class="new-project">
         <summary>+ New project from template</summary>
-        ${renderTemplatePickerBody_(wrap)}
+        ${renderTemplatePickerBody_()}
       </details>
     </section>
   `);

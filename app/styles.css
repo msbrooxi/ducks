@@ -167,6 +167,10 @@ button.danger { color: var(--danger); border-color: var(--danger); background: t
   padding: 7px; border-radius: 8px; border: 1px solid var(--border);
   background: var(--card-bg); color: var(--text);
 }
+.dir-toggle {
+  padding: 7px 10px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--card-bg); color: var(--text); font-size: 0.85rem;
+}
 
 .kidlink code {
   display: block; background: var(--chip-bg); padding: 6px 8px; border-radius: 6px;

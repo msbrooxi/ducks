@@ -463,6 +463,44 @@ Other fixes this round:
   further; worth a direct retest on this build before assuming anything
   new is wrong.
 
+**Round 7 (2026-10-02): a crash on the Projects tab, plus follow-ups.**
+After redeploying Round 6's Code.gs, the Projects tab came back completely
+blank, nav bar and all. Found it immediately: `renderProjects()` referenced
+`wrap` inside the template literal still being used to build `wrap` itself,
+a `const` temporal-dead-zone `ReferenceError`. That throws synchronously
+partway through `render()`, before the nav bar ever gets appended, which is
+exactly why the whole screen (not just the Projects content) went blank.
+Fixed by not passing `wrap` into `renderTemplatePickerBody_()`, which never
+needed it. This was introduced in Round 6 by the templates feature and
+never actually worked.
+
+Also this round:
+- **Duck meter now keeps extending.** Once the first 5 duck slots are all
+  filled for the day, 5 more empty ones appear, and again every time the
+  current group fills, so a big day has somewhere to go instead of the
+  meter just capping out. `fiveDucksRow()` computes `slots =
+  5 * ceil((fill + 1) / 5)` instead of a hardcoded 5.
+- **New List sort: "Recently added"**, newest first by default, so what
+  was just typed in is a glance away without hunting for it by date or
+  ducks.
+- **Every List sort now has a direction toggle** (a button next to the
+  sort dropdown, flips between e.g. "Soonest first" / "Latest first",
+  "Fewest first" / "Most first"). `sortForList()` in rank.js takes a
+  `direction` argument now; each mode's comparator is written in its own
+  plain ascending sense and `direction` just chooses whether to use it as
+  written or reversed. A task with no value for the active sort field
+  (no due date, no ducks, no size) always sinks to the bottom regardless
+  of direction, there's no meaningful "last" for a blank.
+- **Done tab lag, answered rather than changed:** completing a task
+  updates local storage and re-renders synchronously, so on the same
+  device it should be instant, not laggy. The only real lag is getting a
+  change to show up on a DIFFERENT device, which is poll-based (every 60
+  seconds while that device's tab is open and visible, or immediately
+  if you switch back to the tab/app, which triggers a sync on focus).
+  There's no push notification between devices, so a laptop sitting
+  untouched in the background won't see a phone's completion until you
+  look at it again.
+
 ## Build order
 0. **Test first:** throwaway Apps Script + Pages page. Stephanie tests from
    iPhone and a Samsung: write, read, kid submit. Stop and rethink if it fails.
