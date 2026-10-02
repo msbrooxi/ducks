@@ -329,6 +329,26 @@ own uuid; nothing dedupes by title), but it wasn't reproduced either,
 only reasoned about. Needs the exported event log to actually diagnose
 rather than guess further.
 
+**Round 4 (2026-10-02): the Save button race.** Reported directly: typed
+a note, pressed the new Save button, closed and reopened Details, note
+gone. Found a real mechanism, a click on Save fires the textarea's
+`blur` first (focus moves away before the click completes), and the
+blur handler added in round 3 called `render()`, which tears down and
+rebuilds the whole screen, including the Save button itself, before the
+browser finishes dispatching the click. On a phone this can make the tap
+get swallowed entirely, so the explicit-save logic (and its "Saved!"
+confirmation) might never run at all, silently. blur now only flushes
+(`flushPendingFieldEdits()`), it no longer calls `render()`, so clicking
+anything else right after typing can't have its target destroyed
+mid-click. The Save button itself was also rebuilt to not depend on the
+autosave plumbing at all: it now reads every `[data-field]` element in
+the open editor directly and writes that as one patch, then re-reads the
+task from storage and compares, showing "Saved!" only if what's stored
+actually matches what was on screen, and a visible error asking to retry
+or report it if not. This was reasoned through carefully, not confirmed
+against her real data (no Drive access), so it should be verified
+against an actual repeat of the failure, not assumed fixed.
+
 ## Build order
 0. **Test first:** throwaway Apps Script + Pages page. Stephanie tests from
    iPhone and a Samsung: write, read, kid submit. Stop and rethink if it fails.

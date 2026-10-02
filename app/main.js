@@ -12,7 +12,7 @@ import { computeFirstDue, computeNextDue, FREQUENCIES, recurrenceLabel } from '.
 // Bumped by hand on every shipped change. Shown in Settings so it's a
 // one-glance way to tell whether a device is actually running the latest
 // build, instead of guessing from a stale cached copy.
-const APP_BUILD = '2026-10-01.1';
+const APP_BUILD = '2026-10-02.1';
 
 let activeTab = 'home';
 let expandedTaskId = null;
@@ -530,13 +530,41 @@ function attachGlobalDelegation() {
       snoozeTask(id, to);
     }
     else if (action === 'explicitSave') {
+      // Read what's actually in the editor's own fields right now (not
+      // relying on whatever did or didn't get captured by 'input' events)
+      // and write it directly, so this button is a genuine guarantee, not
+      // just a trigger for the same autosave path that's in question.
+      const panel = btn.closest('.editor');
+      if (panel) {
+        const patch = {};
+        panel.querySelectorAll('[data-field]').forEach((el) => {
+          if (el.dataset.id !== id) return;
+          if (el.multiple) patch[el.dataset.field] = Array.from(el.selectedOptions).map((o) => o.value);
+          else patch[el.dataset.field] = el.dataset.field === 'due' && el.value === '' ? null : el.value;
+        });
+        const before = getTask(id);
+        if (before) saveTask(touchTask(before, patch));
+      }
       flushPendingFieldEdits();
       syncNow();
       render();
+      // Verify, don't assume: re-read from storage and compare against
+      // what the panel showed, so a false "Saved!" can't happen.
+      const after = getTask(id);
+      const ok = panel && after && Array.from(panel.querySelectorAll('[data-field]'))
+        .filter((el) => el.dataset.id === id)
+        .every((el) => {
+          const expected = el.multiple
+            ? JSON.stringify(Array.from(el.selectedOptions).map((o) => o.value))
+            : (el.dataset.field === 'due' && el.value === '' ? null : el.value);
+          const actual = el.multiple ? JSON.stringify(after[el.dataset.field] || []) : after[el.dataset.field];
+          return expected === actual || (expected === null && actual == null);
+        });
       const span = document.getElementById('saveConfirm-' + id);
       if (span) {
-        span.textContent = 'Saved!';
-        setTimeout(() => { if (span.isConnected) span.textContent = ''; }, 2000);
+        span.textContent = ok ? 'Saved!' : 'Something did not save, please try again or tell Claude';
+        span.style.color = ok ? '' : 'var(--danger)';
+        setTimeout(() => { if (span.isConnected) span.textContent = ''; }, ok ? 2000 : 8000);
       }
     }
   });
@@ -554,7 +582,15 @@ function attachGlobalDelegation() {
   app.addEventListener('blur', (e) => {
     const field = e.target.dataset && e.target.dataset.field;
     if (!field || !isDebouncedField_(e.target)) return;
-    render(); // flushes any pending edit for this field first, see render()
+    // Save quietly, do NOT render() here. Clicking another element (like
+    // the Save button, or a duck rating) fires this field's blur FIRST,
+    // before that click's own handler runs. Calling render() here tore
+    // down and rebuilt the whole screen, including whatever was about to
+    // be clicked, before the browser had finished dispatching that click
+    // on a phone, which could swallow the tap entirely. The data is still
+    // safe immediately (flush writes to storage synchronously); the
+    // screen catches up on whatever render happens next regardless.
+    flushPendingFieldEdits();
   }, true);
   app.addEventListener('change', (e) => {
     if (e.target.dataset && e.target.dataset.actionSelect === 'moveToProject') {
