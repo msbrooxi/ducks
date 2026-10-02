@@ -3,16 +3,16 @@ import {
   getLocal, saveLocal, getConn, saveConn, isPastDue, ducksDayDate,
   logEvent, CATEGORIES, SIZES, nowIso,
   getProjectList, getSteps, projectProgress
-} from './store.js?v=2026-10-02.12';
-import { scheduleSync, syncNow, onSyncStatus, startBackgroundSync, exportEventLog } from './sync.js?v=2026-10-02.12';
-import { doNextList, minutesFilter, fiveDucksFill, sortForList, LIST_SORTS, DEFAULT_SORT_DIR, SORT_DIR_LABELS, isBlocked } from './rank.js?v=2026-10-02.12';
-import { playQuack, playParade } from './quack.js?v=2026-10-02.12';
-import { computeFirstDue, computeNextDue, FREQUENCIES, recurrenceLabel, WEEKDAY_NAMES, MONTH_NAMES } from './recurrence.js?v=2026-10-02.12';
+} from './store.js?v=2026-10-02.13';
+import { scheduleSync, syncNow, onSyncStatus, startBackgroundSync, exportEventLog } from './sync.js?v=2026-10-02.13';
+import { doNextList, minutesFilter, fiveDucksFill, sortForList, LIST_SORTS, DEFAULT_SORT_DIR, SORT_DIR_LABELS, isBlocked } from './rank.js?v=2026-10-02.13';
+import { playQuack, playParade } from './quack.js?v=2026-10-02.13';
+import { computeFirstDue, computeNextDue, FREQUENCIES, recurrenceLabel, WEEKDAY_NAMES, MONTH_NAMES } from './recurrence.js?v=2026-10-02.13';
 
 // Bumped by hand on every shipped change. Shown in Settings so it's a
 // one-glance way to tell whether a device is actually running the latest
 // build, instead of guessing from a stale cached copy.
-const APP_BUILD = '2026-10-02.12';
+const APP_BUILD = '2026-10-02.13';
 
 let activeTab = 'home';
 let expandedTaskId = null;
@@ -728,6 +728,17 @@ function isTypingAnywhere_() {
   if (!el) return false;
   if (el.tagName === 'TEXTAREA') return true;
   if (el.tagName === 'INPUT') return ['text', 'url', 'date', 'number'].includes(el.type);
+  // A <select> (the dependency multi-select especially) is just as
+  // vulnerable as a text field: clicking an option IS the interaction,
+  // there's no separate "commit" step until whatever button submits the
+  // surrounding form. A background-sync render landing between picking an
+  // option and clicking Save/Update silently reverted the selection back
+  // to whatever was last saved, so submitting right after looked like it
+  // had quietly ignored the new pick and kept the old (wrong) one, every
+  // time, since the revert always lands before the click that would have
+  // used it. This is the most likely explanation for "I pick a different
+  // pre-req but it keeps showing the same one" in the template builder.
+  if (el.tagName === 'SELECT') return true;
   return false;
 }
 

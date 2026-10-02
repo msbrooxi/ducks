@@ -713,6 +713,25 @@ template list (with Edit/Delete) out into its own always-visible
 "+ New project from template" and "+ New template," no expanding
 anything required to find it.
 
+**Round 16 (2026-10-02): dependency picks in the template builder silently
+reverting.** Reported: picking different pre-reqs for a step shows the
+right titles in the dropdown, but whatever actually gets saved always
+turned out to be the same one wrong step, repeated if more than one was
+picked. Traced it to a real gap: the "don't let a background sync's
+re-render interrupt what she's doing" check (`isTypingAnywhere_()`, used
+by `onSyncStatus` before deciding whether to re-render) covered text
+inputs and textareas but not `<select>` elements. Clicking an option in a
+`<select multiple>` IS the interaction, with no separate "commit" step
+until the surrounding form's button is clicked, so a background sync
+landing in that window would silently revert the dropdown back to
+whatever was last saved, and clicking "Update step" right after would
+submit that reverted (old) value without any visible sign it had happened.
+Fixed by having `isTypingAnywhere_()` also treat any focused `<select>` as
+an in-progress interaction. Not confirmed against a live repro (can't
+click her browser), but it's a real, previously-missed gap that fits every
+part of what was reported: correct dropdown, wrong and sometimes-repeated
+saved result.
+
 ## Build order
 0. **Test first:** throwaway Apps Script + Pages page. Stephanie tests from
    iPhone and a Samsung: write, read, kid submit. Stop and rethink if it fails.
