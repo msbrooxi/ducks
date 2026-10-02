@@ -702,6 +702,17 @@ draft does not survive a page reload. If a draft was open when this build
 shipped, it needs to be re-entered (or finished and saved) rather than
 picked back up.
 
+**Round 15 (2026-10-02): template "Edit" was findable only by accident.**
+The Edit button for a saved template already existed (since Round 12), but
+it lived inside "+ New project from template," a section about USING a
+template, under a "Manage templates" sub-heading that only showed once
+that section was expanded. Reported as "the projects screen only has 'New
+Template', not 'edit template'," i.e. not found at all. Pulled the
+template list (with Edit/Delete) out into its own always-visible
+`renderTemplateManageList_()`, shown directly on the Projects tab between
+"+ New project from template" and "+ New template," no expanding
+anything required to find it.
+
 ## Build order
 0. **Test first:** throwaway Apps Script + Pages page. Stephanie tests from
    iPhone and a Samsung: write, read, kid submit. Stop and rethink if it fails.

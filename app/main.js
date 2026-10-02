@@ -3,16 +3,16 @@ import {
   getLocal, saveLocal, getConn, saveConn, isPastDue, ducksDayDate,
   logEvent, CATEGORIES, SIZES, nowIso,
   getProjectList, getSteps, projectProgress
-} from './store.js?v=2026-10-02.11';
-import { scheduleSync, syncNow, onSyncStatus, startBackgroundSync, exportEventLog } from './sync.js?v=2026-10-02.11';
-import { doNextList, minutesFilter, fiveDucksFill, sortForList, LIST_SORTS, DEFAULT_SORT_DIR, SORT_DIR_LABELS, isBlocked } from './rank.js?v=2026-10-02.11';
-import { playQuack, playParade } from './quack.js?v=2026-10-02.11';
-import { computeFirstDue, computeNextDue, FREQUENCIES, recurrenceLabel, WEEKDAY_NAMES, MONTH_NAMES } from './recurrence.js?v=2026-10-02.11';
+} from './store.js?v=2026-10-02.12';
+import { scheduleSync, syncNow, onSyncStatus, startBackgroundSync, exportEventLog } from './sync.js?v=2026-10-02.12';
+import { doNextList, minutesFilter, fiveDucksFill, sortForList, LIST_SORTS, DEFAULT_SORT_DIR, SORT_DIR_LABELS, isBlocked } from './rank.js?v=2026-10-02.12';
+import { playQuack, playParade } from './quack.js?v=2026-10-02.12';
+import { computeFirstDue, computeNextDue, FREQUENCIES, recurrenceLabel, WEEKDAY_NAMES, MONTH_NAMES } from './recurrence.js?v=2026-10-02.12';
 
 // Bumped by hand on every shipped change. Shown in Settings so it's a
 // one-glance way to tell whether a device is actually running the latest
 // build, instead of guessing from a stale cached copy.
-const APP_BUILD = '2026-10-02.11';
+const APP_BUILD = '2026-10-02.12';
 
 let activeTab = 'home';
 let expandedTaskId = null;
@@ -907,6 +907,8 @@ function renderProjects() {
         ${renderTemplatePickerBody_()}
       </details>
 
+      ${renderTemplateManageList_()}
+
       <details class="new-project" ${templateDraftSteps.length ? 'open' : ''}>
         <summary>${templateDraftEditingId ? '+ Editing template' : '+ New template (define from scratch, nothing added to your list until you use it)'}</summary>
         <div id="tplBuilder">${renderTemplateBuilder_()}</div>
@@ -1357,7 +1359,19 @@ function renderTemplatePickerBody_() {
       <input id="tplStart" type="date">
     </label>
     <button id="tplCreate">Create project from template</button>
-    <h3 style="margin-top:14px">Manage templates</h3>
+  `;
+}
+
+// Shown directly on the Projects tab, not tucked inside any collapsed
+// section: this is specifically where "Edit" lives for a saved template.
+// It was easy to miss buried inside "+ New project from template" (a
+// section about USING a template, not managing one), which read as "there's
+// no way to edit a template" even though Edit already existed there.
+function renderTemplateManageList_() {
+  const templates = getTemplates_();
+  if (!templates.length) return '';
+  return `
+    <h3 style="margin-top:18px">Your templates</h3>
     <div class="cards">
       ${templates.map((t) => `
         <div class="card">
