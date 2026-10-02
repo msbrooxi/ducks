@@ -732,6 +732,33 @@ click her browser), but it's a real, previously-missed gap that fits every
 part of what was reported: correct dropdown, wrong and sometimes-repeated
 saved result.
 
+**Round 17 (2026-10-02): the dependency bug persisted after Round 16, on
+laptop (not a touch/mobile issue).** Confirmed on the specific example
+"Enter listing into SkySlope" repeating N times for N picks, any pick,
+every time. Two changes, since the exact root cause couldn't be directly
+observed (no access to her browser):
+1. Replaced the "Depends on" `<select multiple>` with a checkbox per
+   pickable step (`.tplDepCheck`). A native multi-select's "value" and
+   "selected" semantics are easy to get subtly wrong across browsers, and
+   a checkbox list removes all ambiguity: each one's checked state is
+   directly what gets read (`readStepFromForm_()` now reads
+   `.tplDepCheck:checked` instead of `selectedOptions`). `isTypingAnywhere_()`
+   extended to cover checkbox inputs for the same reason `<select>` needed
+   it in Round 16: checking several boxes before clicking "Update step" is
+   still an in-progress, not-yet-submitted interaction.
+2. Added a defensive backfill in `editTemplate()`: any step missing its
+   `key` now gets a fresh one the moment the template is opened for
+   editing (`key: s.key || uuid_()`). The theory this covers: if two or
+   more steps ever ended up with `key: undefined` (from any source, old or
+   new), every one of them would collide on the literal object property
+   name "undefined" the moment their keys are used to build `titleByKey`
+   or `keyToRealId`, making every dependency pointing at ANY of them
+   resolve to whichever one was read last in the loop, i.e., exactly "the
+   same wrong step, repeated." Backfilling a real key the moment the
+   template is next opened self-heals this regardless of how it happened,
+   and the checkbox rewrite makes a NEW instance of the same failure mode
+   much harder to introduce going forward.
+
 ## Build order
 0. **Test first:** throwaway Apps Script + Pages page. Stephanie tests from
    iPhone and a Samsung: write, read, kid submit. Stop and rethink if it fails.

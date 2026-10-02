@@ -3,16 +3,16 @@ import {
   getLocal, saveLocal, getConn, saveConn, isPastDue, ducksDayDate,
   logEvent, CATEGORIES, SIZES, nowIso,
   getProjectList, getSteps, projectProgress
-} from './store.js?v=2026-10-02.13';
-import { scheduleSync, syncNow, onSyncStatus, startBackgroundSync, exportEventLog } from './sync.js?v=2026-10-02.13';
-import { doNextList, minutesFilter, fiveDucksFill, sortForList, LIST_SORTS, DEFAULT_SORT_DIR, SORT_DIR_LABELS, isBlocked } from './rank.js?v=2026-10-02.13';
-import { playQuack, playParade } from './quack.js?v=2026-10-02.13';
-import { computeFirstDue, computeNextDue, FREQUENCIES, recurrenceLabel, WEEKDAY_NAMES, MONTH_NAMES } from './recurrence.js?v=2026-10-02.13';
+} from './store.js?v=2026-10-02.14';
+import { scheduleSync, syncNow, onSyncStatus, startBackgroundSync, exportEventLog } from './sync.js?v=2026-10-02.14';
+import { doNextList, minutesFilter, fiveDucksFill, sortForList, LIST_SORTS, DEFAULT_SORT_DIR, SORT_DIR_LABELS, isBlocked } from './rank.js?v=2026-10-02.14';
+import { playQuack, playParade } from './quack.js?v=2026-10-02.14';
+import { computeFirstDue, computeNextDue, FREQUENCIES, recurrenceLabel, WEEKDAY_NAMES, MONTH_NAMES } from './recurrence.js?v=2026-10-02.14';
 
 // Bumped by hand on every shipped change. Shown in Settings so it's a
 // one-glance way to tell whether a device is actually running the latest
 // build, instead of guessing from a stale cached copy.
-const APP_BUILD = '2026-10-02.13';
+const APP_BUILD = '2026-10-02.14';
 
 let activeTab = 'home';
 let expandedTaskId = null;
@@ -727,17 +727,18 @@ function isTypingAnywhere_() {
   const el = document.activeElement;
   if (!el) return false;
   if (el.tagName === 'TEXTAREA') return true;
-  if (el.tagName === 'INPUT') return ['text', 'url', 'date', 'number'].includes(el.type);
-  // A <select> (the dependency multi-select especially) is just as
-  // vulnerable as a text field: clicking an option IS the interaction,
-  // there's no separate "commit" step until whatever button submits the
-  // surrounding form. A background-sync render landing between picking an
-  // option and clicking Save/Update silently reverted the selection back
-  // to whatever was last saved, so submitting right after looked like it
-  // had quietly ignored the new pick and kept the old (wrong) one, every
-  // time, since the revert always lands before the click that would have
-  // used it. This is the most likely explanation for "I pick a different
-  // pre-req but it keeps showing the same one" in the template builder.
+  // 'checkbox' covers the dependency picker's checkboxes: checking several
+  // before clicking "Update step" is the same kind of in-progress,
+  // not-yet-submitted interaction as typing, and just as vulnerable to
+  // being silently reset by a background render in between.
+  if (el.tagName === 'INPUT') return ['text', 'url', 'date', 'number', 'checkbox'].includes(el.type);
+  // A <select> is just as vulnerable as a text field: clicking an option
+  // IS the interaction, there's no separate "commit" step until whatever
+  // button submits the surrounding form. A background-sync render landing
+  // in between silently reverted the selection back to whatever was last
+  // saved, so submitting right after looked like it had quietly ignored
+  // the new pick and kept the old (wrong) one, every time, since the
+  // revert always lands before the click that would have used it.
   if (el.tagName === 'SELECT') return true;
   return false;
 }
@@ -1050,7 +1051,18 @@ function editTemplate(id) {
   templateDraftName = template.name;
   templateEditingStepIdx = null;
   // Deep copy so cancelling an edit never mutates the saved template.
-  templateDraftSteps = template.steps.map((s) => Object.assign({}, s, { dependsOnKeys: (s.dependsOnKeys || []).slice() }));
+  // `key: s.key || uuid_()` is a defensive backfill: if a step ever ended
+  // up without one (an old template, or any other way), every such step
+  // would collide on the literal property name "undefined" the moment
+  // their keys are used as object keys, making every dependency on ANY of
+  // them resolve to whichever one of them happened to be read last. That
+  // would look exactly like "every pick shows the same one wrong step,
+  // repeated." Giving any key-less step a fresh one here self-heals it the
+  // next time the template is opened, regardless of how it happened.
+  templateDraftSteps = template.steps.map((s) => Object.assign({}, s, {
+    key: s.key || uuid_(),
+    dependsOnKeys: (s.dependsOnKeys || []).slice()
+  }));
   render();
 }
 
@@ -1178,11 +1190,15 @@ function renderTemplateBuilder_() {
       </select>
     </label>
     ${pickableSteps.length ? `
-      <label>Depends on (must finish first; any other step is pickable, including one added later than this one)
-        <select id="tplStepDeps" multiple size="4">
-          ${pickableSteps.map((s) => `<option value="${s.key}" ${selectedDeps.includes(s.key) ? 'selected' : ''}>${esc(s.title)}</option>`).join('')}
-        </select>
-      </label>
+      <p class="hint" style="margin-bottom:4px">Depends on (must finish first; any other step is pickable, including one added later than this one)</p>
+      <div class="dep-checklist">
+        ${pickableSteps.map((s) => `
+          <label class="dep-check-row">
+            <input type="checkbox" class="tplDepCheck" value="${esc(s.key)}" ${selectedDeps.includes(s.key) ? 'checked' : ''}>
+            ${esc(s.title)}
+          </label>
+        `).join('')}
+      </div>
     ` : ''}
     <div class="save-row">
       <button type="button" id="tplAddStep">${editing ? 'Update step' : 'Add step to template'}</button>
@@ -1207,8 +1223,7 @@ function wireTemplateBuilder_(wrap) {
   function readStepFromForm_() {
     const title = container.querySelector('#tplStepTitle').value.trim();
     if (!title) { alert('Give the step a title.'); return null; }
-    const depsSelect = container.querySelector('#tplStepDeps');
-    const dependsOnKeys = depsSelect ? Array.from(depsSelect.selectedOptions).map((o) => o.value) : [];
+    const dependsOnKeys = Array.from(container.querySelectorAll('.tplDepCheck:checked')).map((cb) => cb.value);
     return {
       title,
       dayOffset: Number(container.querySelector('#tplStepOffset').value) || 0,

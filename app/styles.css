@@ -215,6 +215,15 @@ details.new-project button#projCreate, details.new-recurring button#recCreate {
   margin-top: 12px; padding: 9px 14px; border-radius: 8px; border: none;
   background: var(--accent); color: white; font-weight: 600;
 }
+.dep-checklist {
+  display: flex; flex-direction: column; gap: 6px; margin-top: 4px;
+  max-height: 180px; overflow-y: auto; border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px;
+}
+details.new-project label.dep-check-row {
+  flex-direction: row; align-items: center; gap: 8px; margin-top: 0;
+  font-size: 0.9rem; color: var(--text);
+}
 
 .tabs {
   position: sticky; bottom: 0; z-index: 5;
