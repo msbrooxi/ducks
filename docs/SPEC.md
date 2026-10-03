@@ -915,6 +915,40 @@ Added a Credits section to `README.md` with both sounds' authors and
 Freesound links. `audio/quack.wav` added to `sw.js`'s offline precache list
 alongside everything else.
 
+**Round 23 (2026-10-03): the real quack produced no sound at all.** Round
+22's Playwright tests checked that `fetch`/`decodeAudioData`/`playQuack()`/
+`playParade()` all resolved without throwing, and reported clean, but
+"resolves without an error" and "is actually audible" are different claims,
+and the gap between them is a well-known Web Audio trap: eagerly fetching
+and decoding the clip at module load (so it's ready before the first tap)
+also eagerly created the `AudioContext` at that same moment, before any
+click ever happened. Browsers start an `AudioContext` created outside a
+user gesture in `"suspended"` state and never un-suspend it on their own; a
+buffer source scheduled on a suspended context runs through its whole
+fetch/decode/schedule pipeline without ever throwing, it simply never
+produces sound. Confirmed directly this time (not just "no errors"): a
+Playwright test that wraps `window.AudioContext` to capture every instance
+created and inspects `.state` showed `"suspended"` right after page load,
+every time.
+
+Fixed two ways, since iOS Safari (one of her actual devices) is stricter
+about this than desktop Chrome:
+1. `playQuack()`/`playParade()` now call `ctx.resume()` first if the
+   context is suspended, before scheduling anything.
+2. A one-time `pointerdown`/`keydown` listener on `document` (added at
+   module load, removed after it fires once) resumes the context
+   synchronously inside that trusted event's own call stack, the moment she
+   taps or clicks ANYWHERE in the app for the first time, not only when a
+   quack specifically needs to play. This is the more broadly-compatible
+   pattern across browsers; a resume() called from deep inside an awaited
+   promise chain a few microtasks after the triggering click works in
+   desktop Chrome but is the kind of thing iOS Safari has historically been
+   pickier about.
+
+Verified with the state-capturing Playwright test: `suspended` right after
+load, `running` after the first click anywhere (before ever touching
+"Done"), still `running` after actually completing a task.
+
 ## Build order
 0. **Test first:** throwaway Apps Script + Pages page. Stephanie tests from
    iPhone and a Samsung: write, read, kid submit. Stop and rethink if it fails.
