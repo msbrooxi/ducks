@@ -949,6 +949,44 @@ Verified with the state-capturing Playwright test: `suspended` right after
 load, `running` after the first click anywhere (before ever touching
 "Done"), still `running` after actually completing a task.
 
+### Round 24: the real silent-quack cause (fixed 2026-10-03)
+
+Round 23's fix was real but incomplete: the suspended-context bug existed
+and the fix for it was correct, but Stephanie still heard nothing after it
+shipped. DevTools Network tab on her actual laptop showed the real cause:
+`audio/quack.wav` was 404ing at `https://msbrooxi.github.io/audio/quack.wav`,
+missing the `/ducks/` project-page path segment entirely.
+
+Root cause: `fetch('../audio/quack.wav')` resolves a bare relative string
+against the **page's** URL, not the file it's written in, unlike `import`
+statements (which do resolve against the importing module's own URL).
+Ducks lives one path segment deeper than the domain root on GitHub Pages
+(`.../ducks/`), so that mismatch overshot by one directory and landed the
+request at the domain root instead of `.../ducks/audio/`. Every local
+Playwright test up to this point passed cleanly, including one specifically
+written to catch audio bugs (Round 23's `AudioContext.state` inspection),
+because the local test server had no such subpath nesting: serving the
+repo straight from its root meant the wrong math happened to produce the
+right answer there by pure coincidence.
+
+Fixed by resolving explicitly against the module's own URL instead of
+relying on fetch()'s default relative-to-page behavior:
+`new URL('../audio/quack.wav', import.meta.url)`. This is spec-guaranteed
+to use the importing module's URL as the base regardless of how deep the
+app is nested under the page's own path, so it isn't sensitive to
+deployment layout the way a bare relative string passed to `fetch()` is.
+
+**Lesson for future local testing**: any test that serves the app from a
+flat local root will never catch a page-relative-vs-module-relative path
+bug, since GitHub Pages project sites always add one extra path segment
+(`/<repo-name>/`) that a flat local server doesn't have. Round 24's
+verification used a symlinked directory one level up
+(`pages-sim/ducks -> /home/user/ducks`, served from `pages-sim/`) so the
+local server actually reproduces that extra nesting. Reuse that pattern
+for any future test touching a relative `fetch()`, `new Worker()`, or
+`new URL()` call, since those (unlike `import`) don't automatically
+resolve against the calling module.
+
 ## Build order
 0. **Test first:** throwaway Apps Script + Pages page. Stephanie tests from
    iPhone and a Samsung: write, read, kid submit. Stop and rethink if it fails.
