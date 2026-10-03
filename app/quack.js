@@ -12,7 +12,7 @@
 // The synthesized tone_() flourish for the five-ducks parade is kept,
 // that part was never what anyone complained about.
 
-import { getLocal } from './store.js?v=2026-10-03.2';
+import { getLocal } from './store.js?v=2026-10-03.3';
 
 let ctx = null;
 function ctx_() {
@@ -23,10 +23,22 @@ function ctx_() {
 // Kicked off immediately on module load (a plain fetch, no AudioContext
 // involved yet) so the clip is already in memory by the time she first
 // taps "Done," rather than waiting on a network round trip at that moment.
+//
+// Resolved against import.meta.url, not passed as a bare relative string
+// to fetch(): a plain relative string in fetch() resolves against the
+// PAGE's URL, not this module's own file location, unlike `import`
+// statements (which do resolve against the importing module's URL). On
+// GitHub Pages, where the app lives one path segment deeper than the
+// domain root (.../ducks/), that mismatch made '../audio/quack.wav'
+// overshoot by one directory and 404 at the domain root instead of
+// landing in .../ducks/audio/. A local test server with no such subpath
+// nesting never caught this, since the (wrong) math happened to land on
+// the right answer there purely by coincidence.
 let quackBufferPromise = null;
 function quackBuffer_() {
   if (!quackBufferPromise) {
-    quackBufferPromise = fetch('../audio/quack.wav?v=2026-10-03.2')
+    const url = new URL('../audio/quack.wav?v=2026-10-03.3', import.meta.url);
+    quackBufferPromise = fetch(url)
       .then((res) => res.arrayBuffer())
       .then((data) => ctx_().decodeAudioData(data));
   }

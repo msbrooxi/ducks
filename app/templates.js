@@ -14,9 +14,9 @@
 import {
   getTask, saveTask, newTask, touchTask, getSettings, saveSettings,
   getTaskList, getSteps, logEvent, CATEGORIES, SIZES
-} from './store.js?v=2026-10-03.2';
-import { scheduleSync } from './sync.js?v=2026-10-03.2';
-import { esc, duckIcons, sizeLabel, fmtDue, PROJECT_COLORS, addDaysToDateStr, render, openProject } from './main.js?v=2026-10-03.2';
+} from './store.js?v=2026-10-03.3';
+import { scheduleSync } from './sync.js?v=2026-10-03.3';
+import { esc, duckIcons, sizeLabel, fmtDue, PROJECT_COLORS, addDaysToDateStr, render, openProject } from './main.js?v=2026-10-03.3';
 
 function uuid_() {
   if (crypto.randomUUID) return crypto.randomUUID();
