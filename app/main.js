@@ -3,26 +3,33 @@ import {
   getLocal, saveLocal, getConn, saveConn, isPastDue, ducksDayDate,
   logEvent, CATEGORIES, SIZES, nowIso,
   getProjectList, getSteps, projectProgress
-} from './store.js?v=2026-10-03.3';
-import { scheduleSync, syncNow, onSyncStatus, startBackgroundSync, exportEventLog } from './sync.js?v=2026-10-03.3';
-import { doNextList, minutesFilter, fiveDucksFill, sortForList, LIST_SORTS, DEFAULT_SORT_DIR, SORT_DIR_LABELS, isBlocked } from './rank.js?v=2026-10-03.3';
-import { playQuack, playParade } from './quack.js?v=2026-10-03.3';
-import { computeFirstDue, computeNextDue, FREQUENCIES, recurrenceLabel, WEEKDAY_NAMES, MONTH_NAMES } from './recurrence.js?v=2026-10-03.3';
+} from './store.js?v=2026-10-04.1';
+import { scheduleSync, syncNow, onSyncStatus, startBackgroundSync, exportEventLog } from './sync.js?v=2026-10-04.1';
+import { doNextList, minutesFilter, fiveDucksFill, sortForList, LIST_SORTS, DEFAULT_SORT_DIR, SORT_DIR_LABELS, isBlocked } from './rank.js?v=2026-10-04.1';
+import { playQuack, playParade } from './quack.js?v=2026-10-04.1';
+import { computeFirstDue, computeNextDue, FREQUENCIES, recurrenceLabel, WEEKDAY_NAMES, MONTH_NAMES } from './recurrence.js?v=2026-10-04.1';
 import {
   createTemplateFromProject, editTemplate, deleteTemplate,
   renderTemplatePickerBody_, renderTemplateManageList_, renderTemplateBuilder_,
   wireTemplatePicker_, wireTemplateBuilder_, templateDraftIsOpen, templateBuilderSummary
-} from './templates.js?v=2026-10-03.3';
+} from './templates.js?v=2026-10-04.1';
 
 // Bumped by hand on every shipped change. Shown in Settings so it's a
 // one-glance way to tell whether a device is actually running the latest
 // build, instead of guessing from a stale cached copy.
-const APP_BUILD = '2026-10-03.3';
+const APP_BUILD = '2026-10-04.1';
 
 let activeTab = 'home';
 let expandedTaskId = null;
 let minutesQuery = null;
-let listFilters = { category: '', size: '', ducks: '', projects: [], sort: 'date', dir: {} };
+let listFilters = { category: '', size: '', ducks: '', projects: [], search: '', hideBlocked: false, sort: 'date', dir: {} };
+// Typing in the List tab's search box debounces its own re-render (a full
+// render on every keystroke would tear down and recreate the input,
+// dropping focus and the cursor position, the same problem the task editor's
+// text fields solve with their own debounce). This timer, plus refocusing
+// the box by id right after that debounced render, is the List-search
+// equivalent of that.
+let listSearchDebounceTimer = null;
 function currentListDir_() {
   return listFilters.dir[listFilters.sort] || DEFAULT_SORT_DIR[listFilters.sort] || 'asc';
 }
@@ -219,7 +226,13 @@ function completeTask(id) {
         category: t.category,
         due: nextDue,
         recurrence: t.recurrence,
-        source: t.source
+        source: t.source,
+        // Carry the project assignment forward: without this, assigning a
+        // recurring task to a project would silently stop applying the very
+        // next time it completed and respawned, since the fresh copy below
+        // would otherwise start with no projectId at all.
+        projectId: t.projectId,
+        order: t.projectId ? getSteps(t.projectId).length : null
       });
       saveTask(spawned);
       logEvent('created', spawned.id, { recurringFrom: id });
@@ -806,6 +819,17 @@ function renderList(tasks, settings, today) {
       listFilters.projects.includes(t.projectId)
     ));
   }
+  if (listFilters.search.trim()) {
+    const q = listFilters.search.trim().toLowerCase();
+    rest = rest.filter((t) => (
+      (t.title || '').toLowerCase().includes(q) || (t.notes || '').toLowerCase().includes(q)
+    ));
+  }
+  if (listFilters.hideBlocked) {
+    const byId = {};
+    for (const x of getTaskList()) byId[x.id] = x;
+    rest = rest.filter((t) => !isBlocked(t, byId));
+  }
 
   if (expandedTaskId && frozenListOrder && frozenListForTaskId === expandedTaskId) {
     // Keep editing in place: reuse the last order, dropping anything that
@@ -830,6 +854,7 @@ function renderList(tasks, settings, today) {
       ${fiveDucksRow(fill)}
       <h2>List</h2>
       <div class="filters">
+        <input type="text" id="fSearch" placeholder="Search title or notes..." value="${esc(listFilters.search)}">
         <select id="fSort">${LIST_SORTS.map((s) => `<option value="${s.id}" ${listFilters.sort === s.id ? 'selected' : ''}>Sort: ${s.label}</option>`).join('')}</select>
         <button type="button" id="fDir" class="dir-toggle" title="Click to flip the sort direction">
           ${currentListDir_() === 'asc' ? '&#8593;' : '&#8595;'} ${(SORT_DIR_LABELS[listFilters.sort] || {})[currentListDir_()] || ''}
@@ -841,10 +866,14 @@ function renderList(tasks, settings, today) {
           <option value="unrated" ${listFilters.ducks === 'unrated' ? 'selected' : ''}>Not rated yet</option>
           ${[1, 2, 3, 4, 5].map((n) => `<option value="${n}" ${listFilters.ducks === String(n) ? 'selected' : ''}>${n} duck${n > 1 ? 's' : ''}</option>`).join('')}
         </select>
-        <select id="fProjects" multiple size="4" title="Project (Ctrl/Cmd-click to pick more than one)">
-          <option value="none" ${listFilters.projects.includes('none') ? 'selected' : ''}>No project</option>
-          ${getProjectList().map((p) => `<option value="${p.id}" ${listFilters.projects.includes(p.id) ? 'selected' : ''}>${esc(p.chip.nickname)}</option>`).join('')}
-        </select>
+        <span class="project-filter-group">
+          <select id="fProjects" multiple size="4" title="Project (Ctrl/Cmd-click to pick more than one)">
+            <option value="none" ${listFilters.projects.includes('none') ? 'selected' : ''}>No project</option>
+            ${getProjectList().map((p) => `<option value="${p.id}" ${listFilters.projects.includes(p.id) ? 'selected' : ''}>${esc(p.chip.nickname)}</option>`).join('')}
+          </select>
+          <button type="button" id="fProjectsClear" title="Clear the project filter">Clear</button>
+        </span>
+        <label class="hide-blocked-toggle"><input type="checkbox" id="fHideBlocked" ${listFilters.hideBlocked ? 'checked' : ''}> Hide blocked</label>
       </div>
       ${pastDue.length ? `<h3>Past due</h3><div class="cards">${pastDue.map((t) => taskCard(t, today)).join('')}</div>` : ''}
       <h3>${sortHeading_()}</h3>
@@ -864,6 +893,36 @@ function renderList(tasks, settings, today) {
   wrap.querySelector('#fProjects').addEventListener('change', resortAnd_((e) => {
     listFilters.projects = Array.from(e.target.selectedOptions).map((o) => o.value);
   }));
+  // A native multi-select can only be fully cleared with Ctrl/Cmd-click on
+  // every selected option, which isn't discoverable; a plain click on one
+  // option just swaps the single selection rather than clearing it. This
+  // button is the obvious, reliable way back to "all projects" without
+  // reloading the app.
+  wrap.querySelector('#fProjectsClear').addEventListener('click', resortAnd_(() => {
+    listFilters.projects = [];
+  }));
+  wrap.querySelector('#fHideBlocked').addEventListener('change', resortAnd_((e) => {
+    listFilters.hideBlocked = e.target.checked;
+  }));
+  // Debounced like the task editor's own text fields: a render on every
+  // keystroke would tear down and recreate this input, dropping focus and
+  // the cursor position mid-word. Refocus (and restore cursor position)
+  // right after the debounced render actually runs, once the new input
+  // exists in the real DOM.
+  wrap.querySelector('#fSearch').addEventListener('input', (e) => {
+    listFilters.search = e.target.value;
+    clearTimeout(listSearchDebounceTimer);
+    listSearchDebounceTimer = setTimeout(() => {
+      frozenListOrder = null;
+      render();
+      const box = document.getElementById('fSearch');
+      if (box) {
+        box.focus();
+        const pos = box.value.length;
+        box.setSelectionRange(pos, pos);
+      }
+    }, 250);
+  });
   return wrap;
 }
 
@@ -1184,10 +1243,13 @@ function renderSettings(settings) {
                 <div class="card-meta">
                   <span class="chip">${recurrenceLabel(t.recurrence)}</span>
                   ${t.due ? `<span class="chip due">next ${fmtDue(t.due)}</span>` : ''}
+                  ${t.projectId ? projectChip_(t.projectId) : ''}
                 </div>
                 <div class="card-actions">
+                  <button data-action="expand" data-id="${t.id}">Details</button>
                   <button data-action="stopRecurring" data-id="${t.id}">Stop repeating</button>
                 </div>
+                ${expandedTaskId === t.id ? taskEditor(t) : ''}
               </div>
             `).join('')}
           </div>

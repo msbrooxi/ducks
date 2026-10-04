@@ -140,8 +140,11 @@ export function replaceAllTasks(list) {
 }
 
 // Fields that get their own merge timestamp (see touchTask below). Keep this
-// in sync with apps-script/Code.gs's per-field merge.
-const CORE_FIELDS = [
+// in sync with apps-script/Code.gs's per-field merge. Exported so sync.js
+// can run the same per-field comparison client-side, against whatever is
+// in local storage by the time a sync's response comes back (see sync.js
+// for why that's not the same moment the request went out).
+export const CORE_FIELDS = [
   'title', 'notes', 'link', 'ducks', 'due', 'size', 'category',
   'status', 'doingSince', 'completedAt', 'deletedAt',
   'recurrence', 'projectId', 'order', 'chip', 'dependsOn'

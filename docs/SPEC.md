@@ -987,6 +987,76 @@ for any future test touching a relative `fetch()`, `new Worker()`, or
 `new URL()` call, since those (unlike `import`) don't automatically
 resolve against the calling module.
 
+### Round 25: sync-pull race condition (fixed 2026-10-04)
+
+Stephanie reported completing a task (heard the quack, saw it vanish from
+the list) only to find it still active later, missing from Done. Root
+cause: `sync.js`'s pull response was a blind full overwrite
+(`replaceAllTasks(incomingTasks)`) of local storage. A sync round trip takes
+real time (the fetch, server-side processing); any local edit made in that
+window, such as completing a task a moment after an unrelated sync kicked
+off (any edit schedules one 2s later, plus the 60s background poll, plus
+one on every focus/visibility change, so an in-flight request at any given
+moment isn't rare), was invisible to that request's response, since the
+response reflects server state from before the edit happened. The blind
+overwrite then silently reverted it. The same hole could also delete a
+brand new task created mid-flight outright, since the server wouldn't know
+to echo back a task it had never heard of.
+
+Fixed with a client-side mirror of the per-field merge Code.gs already does
+for two different *devices* (see Sync protocol above): `mergeIncoming_()` in
+sync.js merges each incoming task against whatever is in local storage at
+the moment the response actually lands (not the stale pre-request
+snapshot), field by field, keeping whichever side has the newer
+`fieldUpdatedAt`. Tasks created locally mid-flight (absent from the
+response entirely) are kept rather than dropped. The dirty flag is also now
+only cleared for a task whose `updatedAt` still matches what it was when
+the request went out; one touched again mid-flight stays dirty so the next
+sync actually pushes the change, instead of the flag being cleared by
+coincidence (same id, stale snapshot) while the real edit silently never
+reaches the server. This likely also explains why "Start" seemed to not
+persist: `doingSince` is itself a CORE_FIELDS value subject to the exact
+same race.
+
+Verified directly (not through the UI, which needs a live Apps Script
+backend to exercise a real round trip): a Node script
+(`sync-race-test.mjs`, not checked in) fakes `fetch` to hang until released,
+starts a sync, completes a task and creates a new one while it's "in
+flight," then lets the fake server respond with its pre-race snapshot.
+Confirms the completion and the new task both survive, and that the
+completed task correctly stays marked dirty afterward (so a follow-up sync
+still pushes it, rather than the local view quietly being right forever
+while the server never finds out).
+
+### Round 25: List tab additions and recurring task editing (2026-10-04)
+
+- **Search**: `#fSearch` filters the List tab's non-past-due section by a
+  case-insensitive substring match on title or notes, same scope as the
+  existing category/size/ducks/project filters (past-due items are never
+  hidden by any filter). Debounced (250ms) like the task editor's own text
+  fields, since a render on every keystroke would tear down and recreate
+  the input mid-word; refocuses the box and restores cursor position after
+  the debounced render actually runs.
+- **Project filter can't be cleared**: a native multi-select only clears
+  with Ctrl/Cmd-click on every selected option, which isn't discoverable,
+  and a plain click just swaps the single selection rather than clearing
+  it. Added an explicit Clear button next to `#fProjects`.
+- **Hide blocked**: `#fHideBlocked` checkbox filters out any task where
+  `isBlocked()` (rank.js, already used for the "waiting on" chip) is true,
+  same non-past-due scope as the other filters.
+- **Recurring task editing**: a recurring task is a regular task under the
+  hood (just one with a `recurrence` field), so its "Details" editor
+  already has every field a normal task does, Project assignment included,
+  it just wasn't reachable: Settings' "Recurring tasks" card only offered
+  "Stop repeating," no way to open Details. Added a Details button there
+  (same `expandedTaskId`/`taskEditor()` machinery as everywhere else).
+  Fixed a trap this would otherwise spring: `completeTask()`'s respawn of
+  the next occurrence didn't carry `projectId`/`order` forward, so
+  assigning a recurring task to a project would have silently stopped
+  applying the very next time it completed and respawned. Fixed to carry
+  both forward, matching how `addQuickTask`/`cloneTask` already compute a
+  step's `order` when adding into a project.
+
 ## Build order
 0. **Test first:** throwaway Apps Script + Pages page. Stephanie tests from
    iPhone and a Samsung: write, read, kid submit. Stop and rethink if it fails.

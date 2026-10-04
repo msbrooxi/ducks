@@ -4,8 +4,8 @@
 import {
   getConn, getTasks, replaceAllTasks, getSettings, replaceSettings,
   getDirtyTaskIds, clearDirtyTasks, markTaskDirty, isSettingsDirty, clearSettingsDirty,
-  getEventQueue, clearEventQueue, backfillFieldUpdatedAt
-} from './store.js?v=2026-10-03.3';
+  getEventQueue, clearEventQueue, backfillFieldUpdatedAt, CORE_FIELDS
+} from './store.js?v=2026-10-04.1';
 
 let pushTimer = null;
 let syncing = false;
@@ -20,6 +20,35 @@ function announce_(status, detail) {
 
 function fingerprint_(tasks) {
   return tasks.map((t) => t.id + ':' + t.updatedAt).sort().join('|');
+}
+
+// Merges one incoming (server) task against whatever is CURRENTLY in local
+// storage for that id, field by field, keeping whichever side has the newer
+// fieldUpdatedAt for each field. Needed because a sync round trip takes
+// real time (a fetch, server-side processing): she can complete a task, or
+// edit anything else, in the window between this request going out and its
+// response coming back. Without this, a plain full overwrite of local
+// storage with the server's answer would silently revert whatever changed
+// locally during that window, since the server's response reflects state
+// from before that local edit ever happened. This is the client-side
+// mirror of the same per-field merge Code.gs already does server-side for
+// two different DEVICES (see SPEC.md's Sync protocol); this closes the same
+// hole for two edits on the SAME device racing a single sync's round trip.
+function mergeIncoming_(incoming, current) {
+  if (!current) return incoming;
+  const fieldUpdatedAt = Object.assign({}, incoming.fieldUpdatedAt);
+  const merged = Object.assign({}, incoming);
+  for (const f of CORE_FIELDS) {
+    const incomingTs = incoming.fieldUpdatedAt && incoming.fieldUpdatedAt[f];
+    const currentTs = current.fieldUpdatedAt && current.fieldUpdatedAt[f];
+    if (currentTs && (!incomingTs || currentTs > incomingTs)) {
+      merged[f] = current[f];
+      fieldUpdatedAt[f] = currentTs;
+    }
+  }
+  merged.fieldUpdatedAt = fieldUpdatedAt;
+  merged.updatedAt = current.updatedAt > incoming.updatedAt ? current.updatedAt : incoming.updatedAt;
+  return merged;
 }
 
 export function scheduleSync(delayMs = 2000) {
@@ -40,6 +69,14 @@ export async function syncNow() {
   const tasksById = getTasks();
   const dirtyIds = getDirtyTaskIds();
   const dirtyTasks = dirtyIds.map((id) => tasksById[id]).filter(Boolean);
+  // Snapshot each dirty task's updatedAt now, before the request goes out.
+  // The dirty flag only gets cleared below for a task whose updatedAt still
+  // matches this snapshot once the response comes back: one edited again
+  // while this request was in flight has since moved on to a newer
+  // updatedAt, so it stays dirty and goes out on the next sync instead of
+  // silently never reaching the server at all.
+  const dirtySnapshotUpdatedAt = {};
+  dirtyIds.forEach((id) => { if (tasksById[id]) dirtySnapshotUpdatedAt[id] = tasksById[id].updatedAt; });
   const settingsDirty = isSettingsDirty();
   const events = getEventQueue();
 
@@ -68,6 +105,22 @@ export async function syncNow() {
       return stamped;
     });
 
+    // Re-read local storage fresh now that the round trip is done, not the
+    // `tasksById` snapshot from before the request went out: anything done
+    // locally while this was in flight (completing a task, starting one,
+    // adding a new one) lives here and nowhere else yet, and the server's
+    // response above knows nothing about any of it.
+    const currentTasksById = getTasks();
+    const merged = incomingTasks.map((t) => mergeIncoming_(t, currentTasksById[t.id]));
+    const incomingIds = new Set(merged.map((t) => t.id));
+    // A task created locally after this request's payload was already sent
+    // won't be in the server's response at all (the server has never heard
+    // of it yet); keep it, rather than letting a blind overwrite silently
+    // delete it, the same race as above but for a brand new task instead of
+    // an edit to an existing one.
+    const localOnly = Object.values(currentTasksById).filter((t) => !incomingIds.has(t.id));
+    const finalTasks = merged.concat(localOnly);
+
     // Did this pull actually change anything the screen could be showing?
     // A background sync (periodic, or on focus) used to silently replace
     // the local data with no way for main.js to know it should refresh,
@@ -77,11 +130,15 @@ export async function syncNow() {
     // a cheap fingerprint lets the caller re-render only when something
     // genuinely changed, not on every empty 60-second poll.
     const before = fingerprint_(Object.values(tasksById));
-    const after = fingerprint_(incomingTasks);
+    const after = fingerprint_(finalTasks);
 
-    replaceAllTasks(incomingTasks);
+    replaceAllTasks(finalTasks);
     if (data.settings) replaceSettings(data.settings);
-    clearDirtyTasks(dirtyIds);
+    const stillCurrentDirtyIds = dirtyIds.filter((id) => {
+      const nowTask = currentTasksById[id];
+      return nowTask && nowTask.updatedAt === dirtySnapshotUpdatedAt[id];
+    });
+    clearDirtyTasks(stillCurrentDirtyIds);
     if (settingsDirty) clearSettingsDirty();
     clearEventQueue(events.map((e) => e.id));
 

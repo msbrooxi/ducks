@@ -2,7 +2,7 @@
 // meant to be easy to re-tune from Settings without touching this file's
 // shape (the numbers all come from the settings object).
 
-import { isPastDue, ducksDayDate } from './store.js?v=2026-10-03.3';
+import { isPastDue, ducksDayDate } from './store.js?v=2026-10-04.1';
 
 function daysUntil_(dueStr, today) {
   if (!dueStr) return Infinity;
