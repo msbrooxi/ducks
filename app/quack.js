@@ -12,7 +12,7 @@
 // The synthesized tone_() flourish for the five-ducks parade is kept,
 // that part was never what anyone complained about.
 
-import { getLocal } from './store.js?v=2026-10-09.1';
+import { getLocal } from './store.js?v=2026-10-09.2';
 
 let ctx = null;
 function ctx_() {
@@ -37,7 +37,7 @@ function ctx_() {
 let quackBufferPromise = null;
 function quackBuffer_() {
   if (!quackBufferPromise) {
-    const url = new URL('../audio/quack.wav?v=2026-10-09.1', import.meta.url);
+    const url = new URL('../audio/quack.wav?v=2026-10-09.2', import.meta.url);
     quackBufferPromise = fetch(url)
       .then((res) => res.arrayBuffer())
       .then((data) => ctx_().decodeAudioData(data));

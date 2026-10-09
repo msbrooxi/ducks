@@ -3,21 +3,21 @@ import {
   getLocal, saveLocal, getConn, saveConn, isPastDue, ducksDayDate,
   logEvent, CATEGORIES, SIZES, nowIso,
   getProjectList, getSteps, projectProgress
-} from './store.js?v=2026-10-09.1';
-import { scheduleSync, syncNow, onSyncStatus, startBackgroundSync, exportEventLog } from './sync.js?v=2026-10-09.1';
-import { doNextList, minutesFilter, fiveDucksFill, sortForList, LIST_SORTS, DEFAULT_SORT_DIR, SORT_DIR_LABELS, isBlocked } from './rank.js?v=2026-10-09.1';
-import { playQuack, playParade } from './quack.js?v=2026-10-09.1';
-import { computeFirstDue, computeNextDue, FREQUENCIES, recurrenceLabel, WEEKDAY_NAMES, MONTH_NAMES } from './recurrence.js?v=2026-10-09.1';
+} from './store.js?v=2026-10-09.2';
+import { scheduleSync, syncNow, onSyncStatus, startBackgroundSync, exportEventLog } from './sync.js?v=2026-10-09.2';
+import { doNextList, minutesFilter, fiveDucksFill, sortForList, LIST_SORTS, DEFAULT_SORT_DIR, SORT_DIR_LABELS, isBlocked } from './rank.js?v=2026-10-09.2';
+import { playQuack, playParade } from './quack.js?v=2026-10-09.2';
+import { computeFirstDue, computeNextDue, FREQUENCIES, recurrenceLabel, WEEKDAY_NAMES, MONTH_NAMES } from './recurrence.js?v=2026-10-09.2';
 import {
   createTemplateFromProject, editTemplate, deleteTemplate,
   renderTemplatePickerBody_, renderTemplateManageList_, renderTemplateBuilder_,
   wireTemplatePicker_, wireTemplateBuilder_, templateDraftIsOpen, templateBuilderSummary
-} from './templates.js?v=2026-10-09.1';
+} from './templates.js?v=2026-10-09.2';
 
 // Bumped by hand on every shipped change. Shown in Settings so it's a
 // one-glance way to tell whether a device is actually running the latest
 // build, instead of guessing from a stale cached copy.
-const APP_BUILD = '2026-10-09.1';
+const APP_BUILD = '2026-10-09.2';
 
 let activeTab = 'home';
 let expandedTaskId = null;
@@ -1209,6 +1209,9 @@ function renderRecDayFields_(freqId) {
         <option value="weeks">Weeks</option>
         <option value="months">Months</option>
       </select>
+    </label>
+    <label>Starting
+      <input id="recIntervalStart" type="date" value="${ducksDayDate()}">
     </label>`;
   }
   return `<label>${f.dayHint}
@@ -1364,7 +1367,14 @@ function renderSettings(settings) {
       if (!day || day < 1 || day > freqDef.maxDay) { alert(`Give it a day number from 1 to ${freqDef.maxDay}.`); return; }
       recurrence = { freq: freqDef.id, day };
     }
-    const due = computeFirstDue(recurrence, ducksDayDate());
+    // Interval recurrence has no fixed calendar position (a weekday, a
+    // day-of-month) for computeFirstDue to find the next occurrence of, so
+    // it just defaults to today; the Starting field lets her pick a
+    // different first occurrence instead (e.g. a 90-day maintenance cycle
+    // that should start from when something was last actually done, not
+    // from today).
+    const intervalStart = freqDef.kind === 'interval' ? wrap.querySelector('#recIntervalStart').value : null;
+    const due = intervalStart || computeFirstDue(recurrence, ducksDayDate());
     const ducksVal = wrap.querySelector('#recDucks').value;
     const t = newTask({
       title,

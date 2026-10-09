@@ -1088,6 +1088,21 @@ the due date that was just completed, not from today).
   spawned next occurrence's due date is exactly 90 days later with the same
   recurrence shape carried forward.
 
+### Round 27: interval recurrence gets a Starting date (2026-10-09)
+
+Follow-up to Round 26: interval recurrence always defaulted its first
+occurrence to today, with no way to pick a different starting point (e.g.
+"every 90 days starting from when the water filter was actually last
+changed," not from whenever she happens to be setting this up in the app).
+Added a `#recIntervalStart` date field (only shown for `kind: 'interval'`,
+defaulting to today) to the "+ New recurring task" form; the create handler
+uses it directly as the new task's `due` instead of calling
+`computeFirstDue()` for this one frequency. `computeFirstDue()` itself is
+unchanged (still returns today when called without a UI driving it, e.g.
+from a future non-UI caller), this is purely a main.js-level override at
+creation time. Verified live: left at its default (today), and set to an
+explicit future date, both produce the correct `due` on the created task.
+
 ## Build order
 0. **Test first:** throwaway Apps Script + Pages page. Stephanie tests from
    iPhone and a Samsung: write, read, kid submit. Stop and rethink if it fails.
