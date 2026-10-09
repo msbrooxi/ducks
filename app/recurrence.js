@@ -1,9 +1,12 @@
-// Date math for recurring tasks. Five frequencies: "weekly" and "biweekly"
+// Date math for recurring tasks. Six frequencies: "weekly" and "biweekly"
 // (a fixed day of the week, every 1 or 2 weeks), "monthly" (a fixed day of
 // every month, e.g. mortgage deposits on the 1st), "quarterly" (a fixed day
 // counted from the start of each calendar quarter, e.g. day 20 of the
-// quarter, so Jan 20 / Apr 20 / Jul 20 / Oct 20), and "annually" (a fixed
-// month and day each year).
+// quarter, so Jan 20 / Apr 20 / Jul 20 / Oct 20), "annually" (a fixed month
+// and day each year), and "interval" (every N days/weeks/months, counted
+// from whenever the task was last completed, not anchored to any fixed
+// calendar position the way the others are, added 2026-10-09 for things
+// like "every 90 days" that don't line up with a fixed weekday or date).
 //
 // A recurring task keeps only ONE live instance at a time. Completing it
 // spawns the next one (see completeTask() in main.js); there is no
@@ -12,6 +15,7 @@
 //   weekly/biweekly: { freq, day: 0..6 }        (0 = Sunday, per getUTCDay())
 //   monthly/quarterly: { freq, day: 1..31 }
 //   annually: { freq, month: 1..12, day: 1..31 }
+//   interval: { freq: 'interval', unit: 'days'|'weeks'|'months', n: 1+ }
 
 export const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 export const MONTH_NAMES = [
@@ -54,6 +58,17 @@ function annualOccurrence_(year, month, day) {
   return monthlyOccurrence_(year, month - 1, day);
 }
 
+// Adds n calendar months, clamping the day-of-month to whatever the
+// resulting month actually has (same clamping monthlyOccurrence_ already
+// does), so "every 1 month" from Jan 31 lands on Feb 28/29, not March 3.
+function addMonthsToDateStr_(dateStr, n) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const total0 = (m - 1) + n;
+  const year = y + Math.floor(total0 / 12);
+  const month0 = ((total0 % 12) + 12) % 12;
+  return monthlyOccurrence_(year, month0, d);
+}
+
 function addDaysToDateStr_(dateStr, delta) {
   const [y, m, d] = dateStr.split('-').map(Number);
   const dt = new Date(Date.UTC(y, m - 1, d));
@@ -84,7 +99,12 @@ export const FREQUENCIES = [
   { id: 'biweekly', label: 'Every 2 weeks', kind: 'weekday', dayHint: 'Day of the week' },
   { id: 'monthly', label: 'Monthly', kind: 'dayOfMonth', dayHint: 'Day of the month (1-31)', maxDay: 31 },
   { id: 'quarterly', label: 'Quarterly', kind: 'dayOfMonth', dayHint: "Day of the quarter, counting the quarter's first day as day 1 (up to 92; past the quarter's actual last day rounds down to it)", maxDay: 92 },
-  { id: 'annually', label: 'Annually', kind: 'monthDay', dayHint: 'Day of the month (1-31)', maxDay: 31 }
+  { id: 'annually', label: 'Annually', kind: 'monthDay', dayHint: 'Day of the month (1-31)', maxDay: 31 },
+  // Not anchored to a fixed weekday/date like the others above: counts N
+  // units forward from the date just completed. "Every 90 days" or "every
+  // 6 months" (a maintenance interval, a checkup cadence) doesn't line up
+  // with a fixed calendar position the way "the 1st" or "Mondays" does.
+  { id: 'interval', label: 'Every X days/weeks/months', kind: 'interval' }
 ];
 
 // The next occurrence strictly after afterDateStr's period, ignoring
@@ -109,6 +129,13 @@ export function computeNextDue(recurrence, afterDateStr) {
   }
   if (recurrence.freq === 'annually') {
     return annualOccurrence_(y + 1, recurrence.month, recurrence.day);
+  }
+  if (recurrence.freq === 'interval') {
+    const n = recurrence.n || 1;
+    if (recurrence.unit === 'days') return addDaysToDateStr_(afterDateStr, n);
+    if (recurrence.unit === 'weeks') return addDaysToDateStr_(afterDateStr, n * 7);
+    if (recurrence.unit === 'months') return addMonthsToDateStr_(afterDateStr, n);
+    return null;
   }
   return null;
 }
@@ -136,6 +163,13 @@ export function computeFirstDue(recurrence, todayStr) {
     const candidate = annualOccurrence_(y, recurrence.month, recurrence.day);
     return candidate >= todayStr ? candidate : annualOccurrence_(y + 1, recurrence.month, recurrence.day);
   }
+  if (recurrence.freq === 'interval') {
+    // No fixed calendar position to find the "next" occurrence of, unlike
+    // the others above: the first instance of an interval recurrence is
+    // just whenever it's created, and it counts forward N units from there
+    // (and from each completion after that).
+    return todayStr;
+  }
   return null;
 }
 
@@ -146,5 +180,10 @@ export function recurrenceLabel(recurrence) {
   if (recurrence.freq === 'monthly') return `Monthly on day ${recurrence.day}`;
   if (recurrence.freq === 'quarterly') return `Quarterly on day ${recurrence.day}`;
   if (recurrence.freq === 'annually') return `Annually on ${MONTH_NAMES[recurrence.month - 1]} ${recurrence.day}`;
+  if (recurrence.freq === 'interval') {
+    const n = recurrence.n || 1;
+    const unitLabel = { days: 'day', weeks: 'week', months: 'month' }[recurrence.unit] || recurrence.unit;
+    return n === 1 ? `Every ${unitLabel}` : `Every ${n} ${unitLabel}s`;
+  }
   return '';
 }

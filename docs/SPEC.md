@@ -23,12 +23,11 @@ Things Stephanie has explicitly flagged for later, intentionally deferred
 while the basics get solid. Check this before starting unrelated work in
 case something here has quietly become relevant.
 - **A more sophisticated recurrence system** (flagged 2026-10-02, after
-  fixing the quarterly day-37 bug in Round 20). The current scheme is a
-  single day-number per frequency (weekly/biweekly day-of-week, monthly/
-  quarterly/annually day-of-month-or-quarter). Not yet scoped: things like
-  "the 2nd Tuesday of the month," "last business day," "every N months,"
-  or whatever else comes up once more real recurring tasks have been lived
-  with. Revisit once asked, not proactively.
+  fixing the quarterly day-37 bug in Round 20). "Every N days/weeks/months"
+  was explicitly asked for and built 2026-10-09 (see below), so that part's
+  done. Still not scoped: things like "the 2nd Tuesday of the month," "last
+  business day," or whatever else comes up once more real recurring tasks
+  have been lived with. Revisit once asked, not proactively.
 
 ## Time rules
 - All dates are evaluated in `America/New_York`.
@@ -1056,6 +1055,38 @@ while the server never finds out).
   applying the very next time it completed and respawned. Fixed to carry
   both forward, matching how `addQuickTask`/`cloneTask` already compute a
   step's `order` when adding into a project.
+
+### Round 26: interval recurrence, "every N days/weeks/months" (2026-10-09)
+
+The Backlog item above (flagged 2026-10-02) got explicitly asked for, so
+built the first piece of it: a sixth frequency, `interval`, shaped
+`{ freq: 'interval', unit: 'days'|'weeks'|'months', n: 1+ }`. Unlike the
+other five frequencies, it isn't anchored to a fixed weekday or
+day-of-month, it just counts `n` units forward from whatever date it's
+computed against, same as recurrence always has (completing early or late
+never shifts the schedule, since `computeNextDue` always steps forward from
+the due date that was just completed, not from today).
+
+- `computeNextDue`: days -> add n days; weeks -> add n*7 days; months ->
+  new `addMonthsToDateStr_()` helper, which clamps the resulting day to
+  whatever the target month actually has (reuses `monthlyOccurrence_`'s
+  existing clamping), so "every 1 month" from Jan 31 lands on Feb 28 (or 29
+  in a leap year), not an overflowed March 3.
+- `computeFirstDue`: just today's date. There's no fixed calendar position
+  to find the next occurrence of the way the other frequencies do (a
+  weekday, a day-of-month); the first instance of "every 90 days" is
+  whenever it's created.
+- UI: `FREQUENCIES` gained a `kind: 'interval'` entry; `renderRecDayFields_`
+  shows a number input plus a days/weeks/months `<select>` for it, and the
+  `#recCreate` handler validates n >= 1 and builds the recurrence shape.
+- Verified the date math directly (day math, week math, month math with
+  both ordinary and leap-year end-of-month clamping, a multi-year 18-month
+  interval, and a regression check that the existing quarterly day-37 math
+  from Round 20 is untouched), plus a live Playwright run through the
+  actual Settings UI: created "every 90 days," confirmed the recurring
+  list's chip reads "Every 90 days," completed it, and confirmed the
+  spawned next occurrence's due date is exactly 90 days later with the same
+  recurrence shape carried forward.
 
 ## Build order
 0. **Test first:** throwaway Apps Script + Pages page. Stephanie tests from

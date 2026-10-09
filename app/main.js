@@ -3,21 +3,21 @@ import {
   getLocal, saveLocal, getConn, saveConn, isPastDue, ducksDayDate,
   logEvent, CATEGORIES, SIZES, nowIso,
   getProjectList, getSteps, projectProgress
-} from './store.js?v=2026-10-04.1';
-import { scheduleSync, syncNow, onSyncStatus, startBackgroundSync, exportEventLog } from './sync.js?v=2026-10-04.1';
-import { doNextList, minutesFilter, fiveDucksFill, sortForList, LIST_SORTS, DEFAULT_SORT_DIR, SORT_DIR_LABELS, isBlocked } from './rank.js?v=2026-10-04.1';
-import { playQuack, playParade } from './quack.js?v=2026-10-04.1';
-import { computeFirstDue, computeNextDue, FREQUENCIES, recurrenceLabel, WEEKDAY_NAMES, MONTH_NAMES } from './recurrence.js?v=2026-10-04.1';
+} from './store.js?v=2026-10-09.1';
+import { scheduleSync, syncNow, onSyncStatus, startBackgroundSync, exportEventLog } from './sync.js?v=2026-10-09.1';
+import { doNextList, minutesFilter, fiveDucksFill, sortForList, LIST_SORTS, DEFAULT_SORT_DIR, SORT_DIR_LABELS, isBlocked } from './rank.js?v=2026-10-09.1';
+import { playQuack, playParade } from './quack.js?v=2026-10-09.1';
+import { computeFirstDue, computeNextDue, FREQUENCIES, recurrenceLabel, WEEKDAY_NAMES, MONTH_NAMES } from './recurrence.js?v=2026-10-09.1';
 import {
   createTemplateFromProject, editTemplate, deleteTemplate,
   renderTemplatePickerBody_, renderTemplateManageList_, renderTemplateBuilder_,
   wireTemplatePicker_, wireTemplateBuilder_, templateDraftIsOpen, templateBuilderSummary
-} from './templates.js?v=2026-10-04.1';
+} from './templates.js?v=2026-10-09.1';
 
 // Bumped by hand on every shipped change. Shown in Settings so it's a
 // one-glance way to tell whether a device is actually running the latest
 // build, instead of guessing from a stale cached copy.
-const APP_BUILD = '2026-10-04.1';
+const APP_BUILD = '2026-10-09.1';
 
 let activeTab = 'home';
 let expandedTaskId = null;
@@ -1199,6 +1199,18 @@ function renderRecDayFields_(freqId) {
       <input id="recDay" type="number" min="1" max="${f.maxDay || 31}" value="1">
     </label>`;
   }
+  if (f.kind === 'interval') {
+    return `<label>Every
+      <input id="recIntervalN" type="number" min="1" max="999" value="1" style="width:4.5em">
+    </label>
+    <label>
+      <select id="recIntervalUnit">
+        <option value="days">Days</option>
+        <option value="weeks">Weeks</option>
+        <option value="months">Months</option>
+      </select>
+    </label>`;
+  }
   return `<label>${f.dayHint}
     <input id="recDay" type="number" min="1" max="${f.maxDay || 31}" value="1">
   </label>`;
@@ -1334,14 +1346,21 @@ function renderSettings(settings) {
       return;
     }
     const freqDef = FREQUENCIES.find((f) => f.id === recFreq.value) || FREQUENCIES[0];
-    const day = Number(wrap.querySelector('#recDay').value);
     let recurrence;
     if (freqDef.kind === 'weekday') {
+      const day = Number(wrap.querySelector('#recDay').value);
       recurrence = { freq: freqDef.id, day }; // 0-6, always valid from the <select>
     } else if (freqDef.kind === 'monthDay') {
+      const day = Number(wrap.querySelector('#recDay').value);
       if (!day || day < 1 || day > freqDef.maxDay) { alert(`Give it a day of the month from 1 to ${freqDef.maxDay}.`); return; }
       recurrence = { freq: freqDef.id, month: Number(wrap.querySelector('#recMonth').value), day };
+    } else if (freqDef.kind === 'interval') {
+      const n = Number(wrap.querySelector('#recIntervalN').value);
+      const unit = wrap.querySelector('#recIntervalUnit').value;
+      if (!n || n < 1) { alert('Give a number of days, weeks, or months, at least 1.'); return; }
+      recurrence = { freq: freqDef.id, unit, n };
     } else {
+      const day = Number(wrap.querySelector('#recDay').value);
       if (!day || day < 1 || day > freqDef.maxDay) { alert(`Give it a day number from 1 to ${freqDef.maxDay}.`); return; }
       recurrence = { freq: freqDef.id, day };
     }
