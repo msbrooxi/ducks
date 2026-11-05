@@ -24,7 +24,7 @@ var MAX_EVENTS_RETURNED = 500;
 var CORE_FIELDS = [
   'title', 'notes', 'link', 'ducks', 'due', 'size', 'category',
   'status', 'doingSince', 'completedAt', 'deletedAt',
-  'recurrence', 'projectId', 'order', 'chip', 'dependsOn'
+  'recurrence', 'projectId', 'order', 'chip', 'dependsOn', 'archived'
 ];
 
 var DEFAULT_SETTINGS = {

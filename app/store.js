@@ -112,7 +112,19 @@ export function getTaskList() {
 // ---- projects (a project is a task with a chip; steps point back at it) ----
 
 export function getProjectList() {
-  return getTaskList().filter((t) => t.chip && !t.projectId);
+  return getTaskList().filter((t) => t.chip && !t.projectId && !t.archived);
+}
+// Archived projects are deliberately excluded from getProjectList() (and so
+// from every dropdown/filter built on it: quick-add, move-to-project,
+// template's "add to existing project", the List tab's project filter, and
+// the Projects tab's own main listing), but still exist and still own
+// whatever steps they have, which stay exactly as visible/completable as
+// before. Archiving is "stop offering this as a place to put new things,"
+// not "delete this project and its history." getArchivedProjectList() is
+// what Settings' archive manager (the only place an archived project is
+// still shown) reads to offer unarchiving it.
+export function getArchivedProjectList() {
+  return getTaskList().filter((t) => t.chip && !t.projectId && t.archived);
 }
 export function getSteps(projectId) {
   return getTaskList()
@@ -147,7 +159,7 @@ export function replaceAllTasks(list) {
 export const CORE_FIELDS = [
   'title', 'notes', 'link', 'ducks', 'due', 'size', 'category',
   'status', 'doingSince', 'completedAt', 'deletedAt',
-  'recurrence', 'projectId', 'order', 'chip', 'dependsOn'
+  'recurrence', 'projectId', 'order', 'chip', 'dependsOn', 'archived'
 ];
 // 'seq' (the human-friendly #1, #2, #3... reference number) is deliberately
 // NOT in this list. It's assigned once by the server (Code.gs) the first
@@ -179,6 +191,8 @@ export function newTask(overrides = {}) {
     order: null,        // a step's position within its project
     chip: null,         // { nickname, color } | null; set on a project head
     dependsOn: [],       // ids of tasks that must be done before this one
+    archived: false,    // a project head only: hidden from every project
+                         // picker/listing, but not deleted; see getProjectList()
     seq: null           // assigned by the server on first sync, see above
   }, overrides);
   task.fieldUpdatedAt = {};

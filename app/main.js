@@ -2,22 +2,22 @@ import {
   getTaskList, getTask, saveTask, newTask, touchTask, getSettings, saveSettings,
   getLocal, saveLocal, getConn, saveConn, isPastDue, ducksDayDate,
   logEvent, CATEGORIES, SIZES, nowIso,
-  getProjectList, getSteps, projectProgress
-} from './store.js?v=2026-11-05.1';
-import { scheduleSync, syncNow, onSyncStatus, startBackgroundSync, exportEventLog } from './sync.js?v=2026-11-05.1';
-import { doNextList, minutesFilter, fiveDucksFill, sortForList, LIST_SORTS, DEFAULT_SORT_DIR, SORT_DIR_LABELS, isBlocked } from './rank.js?v=2026-11-05.1';
-import { playQuack, playParade } from './quack.js?v=2026-11-05.1';
-import { computeFirstDue, computeNextDue, FREQUENCIES, recurrenceLabel, WEEKDAY_NAMES, MONTH_NAMES } from './recurrence.js?v=2026-11-05.1';
+  getProjectList, getArchivedProjectList, getSteps, projectProgress
+} from './store.js?v=2026-11-05.2';
+import { scheduleSync, syncNow, onSyncStatus, startBackgroundSync, exportEventLog } from './sync.js?v=2026-11-05.2';
+import { doNextList, minutesFilter, fiveDucksFill, sortForList, LIST_SORTS, DEFAULT_SORT_DIR, SORT_DIR_LABELS, isBlocked } from './rank.js?v=2026-11-05.2';
+import { playQuack, playParade } from './quack.js?v=2026-11-05.2';
+import { computeFirstDue, computeNextDue, FREQUENCIES, recurrenceLabel, WEEKDAY_NAMES, MONTH_NAMES } from './recurrence.js?v=2026-11-05.2';
 import {
   createTemplateFromProject, editTemplate, deleteTemplate,
   renderTemplatePickerBody_, renderTemplateManageList_, renderTemplateBuilder_,
   wireTemplatePicker_, wireTemplateBuilder_, templateDraftIsOpen, templateBuilderSummary
-} from './templates.js?v=2026-11-05.1';
+} from './templates.js?v=2026-11-05.2';
 
 // Bumped by hand on every shipped change. Shown in Settings so it's a
 // one-glance way to tell whether a device is actually running the latest
 // build, instead of guessing from a stale cached copy.
-const APP_BUILD = '2026-11-05.1';
+const APP_BUILD = '2026-11-05.2';
 
 let activeTab = 'home';
 let expandedTaskId = null;
@@ -621,6 +621,8 @@ function attachGlobalDelegation() {
     else if (action === 'delete') deleteTask(id);
     else if (action === 'clone') cloneTask(id);
     else if (action === 'deleteProject') deleteProject(id);
+    else if (action === 'archiveProject') mutateTask(id, { archived: true }, 'edited', { field: 'archived', to: true });
+    else if (action === 'unarchiveProject') mutateTask(id, { archived: false }, 'edited', { field: 'archived', to: false });
     else if (action === 'restore') restoreTask(id);
     else if (action === 'reopen') reopenTask(id);
     else if (action === 'moveToList') moveToList(id);
@@ -1245,6 +1247,41 @@ function renderSettings(settings) {
 
       <h2>Export</h2>
       <button id="exportBtn">Export event log (JSON + CSV)</button>
+
+      <h2>Projects</h2>
+      <p class="hint">Archiving a project takes it out of every project picker (quick-add, a task's own Project field, the List filter, "add to an existing project" from a template) without deleting it or touching its steps. Archived projects live here if you ever need one back.</p>
+      ${(() => {
+        const active = getProjectList();
+        return active.length ? `
+          <div class="cards">
+            ${active.map((p) => `
+              <div class="card" data-id="${p.id}">
+                <div class="card-title"><span class="project-dot" style="background:${esc(p.chip.color)}"></span> ${esc(p.chip.nickname)}: ${esc(p.title)}</div>
+                <div class="card-actions">
+                  <button data-action="archiveProject" data-id="${p.id}">Archive</button>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        ` : '<p class="empty">No projects yet.</p>';
+      })()}
+      ${(() => {
+        const archived = getArchivedProjectList();
+        if (!archived.length) return '';
+        return `
+          <h3 style="margin-top:12px">Archived</h3>
+          <div class="cards">
+            ${archived.map((p) => `
+              <div class="card" data-id="${p.id}">
+                <div class="card-title"><span class="project-dot" style="background:${esc(p.chip.color)}"></span> ${esc(p.chip.nickname)}: ${esc(p.title)}</div>
+                <div class="card-actions">
+                  <button data-action="unarchiveProject" data-id="${p.id}">Unarchive</button>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        `;
+      })()}
 
       <h2>Recurring tasks</h2>
       <p class="hint">Keeps one live instance going. Completing it creates the next one on schedule, computed from the due date, not from when you actually check it off.</p>

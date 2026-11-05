@@ -28,6 +28,37 @@ case something here has quietly become relevant.
   done. Still not scoped: things like "the 2nd Tuesday of the month," "last
   business day," or whatever else comes up once more real recurring tasks
   have been lived with. Revisit once asked, not proactively.
+- **Kid-submitted inbox items, with real intake structure** (flagged
+  2026-11-05). The core of this already exists and doesn't need building:
+  `kid/` has a working intake page (one text box + an optional "needed by"
+  date, scoped per kid by a write-only key, see "Kid pages" below), and
+  anything it creates lands in the Inbox tab already showing what/who/when
+  (title, `source` = which kid, `due`). What Stephanie actually asked for
+  on top of that, not yet built:
+  1. **A flag on the Home tab when new Inbox items arrive.** Right now
+     nothing signals a new kid submission exists except opening the Inbox
+     tab and looking; she wants to notice it from Home, where she actually
+     starts her day. Needs a "seen" marker of some kind (a device-local
+     `lastInboxSeenAt` in `getLocal()`'s settings, most likely, compared
+     against the newest inbox item's `createdAt`) so the flag clears once
+     she's looked, not just once-and-forever.
+  2. **Kids seeing where their own request stands** (explicitly called a
+     stretch, "doesn't need to be complex out of the gate"): whether it's
+     still pending, got moved to her real list (approved), or got deleted
+     (declined). This is a real, if small, backend change, not just a
+     frontend one: kid keys currently **cannot read anything**, write-only
+     by design ("Kid keys can only create. They cannot read tasks," see
+     Kid pages below), specifically so a kid can't see Mom's actual list.
+     Giving a kid key *any* read access needs a new, narrowly-scoped Apps
+     Script action, something like `kid_my_submissions`, that takes the
+     requesting kid's own key and returns only tasks where `source` matches
+     that kid's slug (never the full task list), with status collapsed to
+     something kid-legible ("waiting," "approved," "not this time" for a
+     deleted one). Worth thinking through on its own before touching
+     Code.gs's auth model, since loosening "kid keys can't read" at all is
+     a real security-shape change for this repo, however narrow.
+  Revisit once asked, building #1 first (it's pure frontend, no backend
+  change) unless she specifically wants #2 done at the same time.
 
 ## Time rules
 - All dates are evaluated in `America/New_York`.
@@ -81,6 +112,12 @@ recurrence    { freq: "monthly" | "quarterly", day: 1..31 } | null
 dependsOn     [id, id, ...]   ids of tasks that must be done first; default []
 seq           number | null   permanent #1/#2/#3... reference number,
               assigned by the server on first sync, see below
+archived      boolean   default false; project heads only (added 2026-11-05).
+              Hides the project from every project picker (getProjectList())
+              without deleting it or touching its steps; see Settings'
+              Projects section for archiving/unarchiving. A project's steps
+              stay exactly as visible/completable regardless of whether
+              their parent project is archived.
 ```
 ```
 waiting       { who, since, followUpBusinessDays } | null   Phase 2, not built
@@ -1132,6 +1169,42 @@ project from template" with "Add to an existing project" checked, picked
 that same project, and confirmed the template's step landed on it with the
 right `order` (continuing from what was already there, not restarting at
 0) and that no second project got created.
+
+### Round 29: project archiving, and merging the two Brampton projects (2026-11-05)
+
+Added `archived` (boolean, project heads only) to CORE_FIELDS in both
+`store.js` and `apps-script/Code.gs` (kept in sync, as always). Settings
+gained a "Projects" section: every active project with an "Archive" button,
+plus an "Archived" list (only shown when non-empty) with "Unarchive".
+`getProjectList()` now excludes archived projects, which is what actually
+removes them from every picker built on it: quick-add, a task's own Project
+field in `taskEditor()`, the List tab's project filter, and templates.js's
+"add to an existing project" picker, all for free since they already called
+`getProjectList()`. Steps under an archived project are completely
+unaffected (still visible, still completable, still show their project
+chip via `projectChip_()`, which reads the project directly by id rather
+than going through `getProjectList()`); archiving only means "stop
+offering this as a destination," not "hide its history."
+
+Separately, merged Stephanie's two duplicate "Brampton" projects (pre-sale
+and post-sale, created from two different templates before Round 28's
+add-to-existing-project option existed). This isn't something I can do
+directly: her real task data lives in her own browser's localStorage and
+her Google Drive, nothing this repo's sandbox can reach. Gave her a
+one-time script to paste into her browser's DevTools console while Ducks
+is open, which dynamically imports the live page's own `store.js`/`sync.js`
+and calls their real functions (`touchTask`, `saveTask`, `scheduleSync`)
+rather than hand-rolling the merge, so the per-field `fieldUpdatedAt`
+stamping and dirty-tracking that the real sync protocol depends on happens
+exactly the way the app itself would do it.
+
+**Also:** she'll need to paste the updated `apps-script/Code.gs` into her
+Apps Script editor and redeploy for the new `archived` field to actually
+merge correctly server-side; until she does, `archived` falls back to
+Code.gs's existing whole-task-by-`updatedAt` merge path for that one field
+specifically (same graceful fallback described in the Sync protocol section
+for any field missing from an older deployed copy of CORE_FIELDS), not a
+hard failure, but worth doing soon rather than leaving it stale.
 
 ## Build order
 0. **Test first:** throwaway Apps Script + Pages page. Stephanie tests from
