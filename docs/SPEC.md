@@ -1103,6 +1103,36 @@ from a future non-UI caller), this is purely a main.js-level override at
 creation time. Verified live: left at its default (today), and set to an
 explicit future date, both produce the correct `due` on the created task.
 
+### Round 28: template-to-existing-project option (2026-11-05)
+
+Stephanie had ended up with two separate "Brampton" projects: one for
+pre-sale activities, a second created from a different template for
+post-sale activities on the same real-world deal, because "+ New project
+from template" only ever created a new project. Added a choice to that
+flow: a radio pair ("Create a new project" / "Add to an existing project")
+in `renderTemplatePickerBody_`, wired in `wireTemplatePicker_`. Picking
+"existing" swaps the title/nickname/color fields for a project picker
+(`getProjectList()`, disabled with a note if there are no projects yet) and
+relabels the button to "Add steps to project". The create handler now
+branches on this choice: for an existing project, it skips creating a
+project task entirely and starts the new steps' `order` at
+`getSteps(project.id).length` instead of 0, so they land after whatever's
+already there rather than overlapping. Everything else (fromTemplateId/
+templateStepKey per step, dependsOnKeys resolution) is unchanged and works
+identically either way.
+
+Combining the two ALREADY-EXISTING Brampton projects didn't need new code:
+the per-step "Project" dropdown in the task editor (`taskEditor()` in
+main.js, already existed for any non-chip task) already lets a step be
+moved to a different project. Told her to move each step from one into the
+other that way, then delete the now-empty one.
+
+Verified live: created a project, saved it as a template, then used "+ New
+project from template" with "Add to an existing project" checked, picked
+that same project, and confirmed the template's step landed on it with the
+right `order` (continuing from what was already there, not restarting at
+0) and that no second project got created.
+
 ## Build order
 0. **Test first:** throwaway Apps Script + Pages page. Stephanie tests from
    iPhone and a Samsung: write, read, kid submit. Stop and rethink if it fails.

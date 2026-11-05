@@ -191,6 +191,8 @@ button.danger { color: var(--danger); border-color: var(--danger); background: t
   padding: 0;
 }
 .color-picker button.sel { border-color: var(--text); }
+.tpl-target-choice { display: flex; gap: 16px; flex-wrap: wrap; margin: 6px 0 10px; }
+.tpl-target-choice label { display: flex; align-items: center; gap: 6px; font-weight: normal; }
 .back-link {
   background: none; border: none; color: var(--accent); font-size: 0.9rem;
   padding: 0; margin-bottom: 8px;

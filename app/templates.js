@@ -13,10 +13,10 @@
 
 import {
   getTask, saveTask, newTask, touchTask, getSettings, saveSettings,
-  getTaskList, getSteps, logEvent, CATEGORIES, SIZES
-} from './store.js?v=2026-10-09.2';
-import { scheduleSync } from './sync.js?v=2026-10-09.2';
-import { esc, duckIcons, sizeLabel, fmtDue, PROJECT_COLORS, addDaysToDateStr, render, openProject } from './main.js?v=2026-10-09.2';
+  getTaskList, getSteps, getProjectList, logEvent, CATEGORIES, SIZES
+} from './store.js?v=2026-11-05.1';
+import { scheduleSync } from './sync.js?v=2026-11-05.1';
+import { esc, duckIcons, sizeLabel, fmtDue, PROJECT_COLORS, addDaysToDateStr, render, openProject } from './main.js?v=2026-11-05.1';
 
 function uuid_() {
   if (crypto.randomUUID) return crypto.randomUUID();
@@ -420,21 +420,35 @@ export function renderTemplatePickerBody_() {
   if (!templates.length) {
     return '<p class="hint">No templates yet. Use "+ New template" below to build one from scratch (nothing gets added to your list), or open an existing project with steps and use "Save as template" there.</p>';
   }
+  const projects = getProjectList();
   return `
     <label>Template
       <select id="tplPick">
         ${templates.map((t) => `<option value="${t.id}">${esc(t.name)} (${t.steps.length} step${t.steps.length > 1 ? 's' : ''})</option>`).join('')}
       </select>
     </label>
-    <label>New project title
-      <input id="tplTitle" placeholder="e.g. Sell 123 Oak Ave">
-    </label>
-    <label>Short nickname
-      <input id="tplNickname" placeholder="e.g. Oak Ave" maxlength="16">
-    </label>
-    <label>Color</label>
-    <div class="color-picker" id="tplColor">
-      ${PROJECT_COLORS.map((c, i) => `<button type="button" data-color="${c}" class="${i === 0 ? 'sel' : ''}" style="background:${c}"></button>`).join('')}
+    <div class="tpl-target-choice">
+      <label><input type="radio" name="tplTarget" id="tplTargetNew" value="new" checked> Create a new project</label>
+      <label><input type="radio" name="tplTarget" id="tplTargetExisting" value="existing" ${projects.length ? '' : 'disabled'}> Add to an existing project${projects.length ? '' : ' (no projects yet)'}</label>
+    </div>
+    <div id="tplNewFields">
+      <label>New project title
+        <input id="tplTitle" placeholder="e.g. Sell 123 Oak Ave">
+      </label>
+      <label>Short nickname
+        <input id="tplNickname" placeholder="e.g. Oak Ave" maxlength="16">
+      </label>
+      <label>Color</label>
+      <div class="color-picker" id="tplColor">
+        ${PROJECT_COLORS.map((c, i) => `<button type="button" data-color="${c}" class="${i === 0 ? 'sel' : ''}" style="background:${c}"></button>`).join('')}
+      </div>
+    </div>
+    <div id="tplExistingFields" style="display:none">
+      <label>Project to add these steps to
+        <select id="tplExistingProject">
+          ${projects.map((p) => `<option value="${p.id}">${esc(p.chip.nickname)}: ${esc(p.title)}</option>`).join('')}
+        </select>
+      </label>
     </div>
     <label>Start date (step due dates shift to match)
       <input id="tplStart" type="date">
@@ -475,45 +489,86 @@ export function wireTemplatePicker_(wrap) {
       btn.classList.add('sel');
     });
   });
+
+  // Toggle between "new project" fields (title/nickname/color) and
+  // "existing project" (just a picker): adding a template's steps onto a
+  // project that already exists doesn't need a title or color, it already
+  // has those. Added 2026-11-05 for the "post-sale steps onto the SAME
+  // project as the pre-sale ones" case, where creating a second,
+  // separate project for the same real-world listing/deal was the actual
+  // complaint (two "Brampton" projects that should have been one).
+  const targetNew = wrap.querySelector('#tplTargetNew');
+  const targetExisting = wrap.querySelector('#tplTargetExisting');
+  const newFields = wrap.querySelector('#tplNewFields');
+  const existingFields = wrap.querySelector('#tplExistingFields');
   const createBtn = wrap.querySelector('#tplCreate');
   if (!createBtn) return;
+  function syncTargetFields_() {
+    const isExisting = targetExisting && targetExisting.checked;
+    newFields.style.display = isExisting ? 'none' : '';
+    existingFields.style.display = isExisting ? '' : 'none';
+    createBtn.textContent = isExisting ? 'Add steps to project' : 'Create project from template';
+  }
+  if (targetNew) targetNew.addEventListener('change', syncTargetFields_);
+  if (targetExisting) targetExisting.addEventListener('change', syncTargetFields_);
+  syncTargetFields_();
+
   createBtn.addEventListener('click', () => {
     const templateId = wrap.querySelector('#tplPick').value;
     const template = getTemplates_().find((t) => t.id === templateId);
-    const title = wrap.querySelector('#tplTitle').value.trim();
-    const nickname = wrap.querySelector('#tplNickname').value.trim();
-    const colorBtn = wrap.querySelector('#tplColor button.sel');
     const startDate = wrap.querySelector('#tplStart').value;
-    if (!template || !title || !nickname) {
-      alert('Pick a template and give the new project a title and nickname.');
-      return;
+    const addingToExisting = targetExisting && targetExisting.checked;
+
+    if (!template) { alert('Pick a template.'); return; }
+
+    let project;
+    let nextOrder;
+    if (addingToExisting) {
+      const existingId = wrap.querySelector('#tplExistingProject').value;
+      project = existingId && getTask(existingId);
+      if (!project) { alert('Pick a project to add these steps to.'); return; }
+      nextOrder = getSteps(project.id).length;
+    } else {
+      const title = wrap.querySelector('#tplTitle').value.trim();
+      const nickname = wrap.querySelector('#tplNickname').value.trim();
+      const colorBtn = wrap.querySelector('#tplColor button.sel');
+      if (!title || !nickname) {
+        alert('Give the new project a title and nickname.');
+        return;
+      }
+      // fromTemplateId + templateStartDate on the project, and fromTemplateId
+      // + templateStepKey on each step, are what later let "update projects
+      // already made from this template" (see propagateTemplateEdit_) find
+      // its way back to these exact tasks and recompute their due dates from
+      // the same start date. They're write-once metadata, never edited again
+      // after creation, so they're deliberately NOT in CORE_FIELDS/Code.gs's
+      // per-field merge list: a field only needs that protection if two
+      // devices might race to change it, and nothing ever changes these.
+      project = newTask({
+        title, size: 'XL', chip: { nickname, color: colorBtn.dataset.color },
+        fromTemplateId: template.id, templateStartDate: startDate || null
+      });
+      saveTask(project);
+      logEvent('created', project.id, { project: true, fromTemplate: template.id });
+      nextOrder = 0;
     }
-    // fromTemplateId + templateStartDate on the project, and fromTemplateId
-    // + templateStepKey on each step, are what later let "update projects
-    // already made from this template" (see propagateTemplateEdit_) find
-    // its way back to these exact tasks and recompute their due dates from
-    // the same start date. They're write-once metadata, never edited again
-    // after creation, so they're deliberately NOT in CORE_FIELDS/Code.gs's
-    // per-field merge list: a field only needs that protection if two
-    // devices might race to change it, and nothing ever changes these.
-    const project = newTask({
-      title, size: 'XL', chip: { nickname, color: colorBtn.dataset.color },
-      fromTemplateId: template.id, templateStartDate: startDate || null
-    });
-    saveTask(project);
-    logEvent('created', project.id, { project: true, fromTemplate: template.id });
+
     // Create every step first so every one has a real id, THEN go back and
     // wire up dependsOn from the template's dependsOnKeys (keyed, not
     // positional, so a step can depend on one added either before or
     // after it in the template). keyToRealId maps each step's key to the
-    // real task id it just got.
+    // real task id it just got. When adding onto an existing project, a
+    // step depending on one from an EARLIER batch (a different template
+    // run) can't be expressed this way, since dependsOnKeys only ever
+    // referenced steps within that same template; that's an existing
+    // limitation of the template system, not something this changes.
     const keyToRealId = {};
-    template.steps.forEach((stepDef, order) => {
+    template.steps.forEach((stepDef, i) => {
       const due = (stepDef.hasDue && startDate) ? addDaysToDateStr(startDate, stepDef.dayOffset) : null;
       const step = newTask({
         title: stepDef.title,
         projectId: project.id,
-        order,
+        order: nextOrder + i,
         due,
         ducks: stepDef.ducks,
         size: stepDef.size,
