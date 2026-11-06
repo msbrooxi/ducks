@@ -1321,6 +1321,35 @@ Three asks once the kid keys were confirmed live:
   showing as selected even though nothing was saved. Verified live:
   creates the project, assigns the task to it at order 0.
 
+### Round 32: viewing an archived project, and pinned project ordering (2026-11-06)
+
+Stephanie asked for a way to archive a *completed* project (out of every
+picker) without losing its steps, confirmed as something already built in
+Round 29: archiving only sets `archived: true` on the project head, never
+touches its steps (still real, undeleted records, same status they were
+in). Verified live with a project holding one done and one active step:
+both survive archiving unchanged, in storage and visible wherever they'd
+normally be.
+
+The one genuine gap found while double-checking: once archived, there was
+no way to actually SEE the project's steps again without unarchiving first
+(`renderProjectDetail()` itself never checked `archived`, so it worked
+fine, there was just no path to reach it: Settings' Archived list only had
+"Unarchive"). Added a "View" button there (reuses the existing
+`openProject()` action, same as everywhere else) plus a done/total steps
+chip for at-a-glance context. Verified live: viewing an archived project
+shows its full step list correctly.
+
+Also: `getProjectList()` now sorts the 3 kids' projects (Angel, Max, Brie,
+matched case-insensitively against `chip.nickname`, same convention as
+Code.gs's `KID_PROJECT_NICKNAME`) to the top in that fixed order, with
+everything else alphabetized by nickname below them. Applied once at the
+source rather than per-caller, so every picker built on it (quick-add,
+move-to-project, the List filter, templates' add-to-existing picker) and
+the Projects tab's own main grid all stay consistent automatically.
+Verified directly in Node: 6 projects seeded in scrambled order come back
+Angel, Max, Brie, then the rest alphabetically.
+
 ## Build order
 0. **Test first:** throwaway Apps Script + Pages page. Stephanie tests from
    iPhone and a Samsung: write, read, kid submit. Stop and rethink if it fails.

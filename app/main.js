@@ -3,21 +3,21 @@ import {
   getLocal, saveLocal, getConn, saveConn, isPastDue, ducksDayDate,
   logEvent, CATEGORIES, SIZES, nowIso,
   getProjectList, getArchivedProjectList, getSteps, projectProgress
-} from './store.js?v=2026-11-06.3';
-import { scheduleSync, syncNow, onSyncStatus, startBackgroundSync, exportEventLog } from './sync.js?v=2026-11-06.3';
-import { doNextList, minutesFilter, fiveDucksFill, sortForList, LIST_SORTS, DEFAULT_SORT_DIR, SORT_DIR_LABELS, isBlocked } from './rank.js?v=2026-11-06.3';
-import { playQuack, playParade } from './quack.js?v=2026-11-06.3';
-import { computeFirstDue, computeNextDue, FREQUENCIES, recurrenceLabel, WEEKDAY_NAMES, MONTH_NAMES } from './recurrence.js?v=2026-11-06.3';
+} from './store.js?v=2026-11-06.4';
+import { scheduleSync, syncNow, onSyncStatus, startBackgroundSync, exportEventLog } from './sync.js?v=2026-11-06.4';
+import { doNextList, minutesFilter, fiveDucksFill, sortForList, LIST_SORTS, DEFAULT_SORT_DIR, SORT_DIR_LABELS, isBlocked } from './rank.js?v=2026-11-06.4';
+import { playQuack, playParade } from './quack.js?v=2026-11-06.4';
+import { computeFirstDue, computeNextDue, FREQUENCIES, recurrenceLabel, WEEKDAY_NAMES, MONTH_NAMES } from './recurrence.js?v=2026-11-06.4';
 import {
   createTemplateFromProject, editTemplate, deleteTemplate,
   renderTemplatePickerBody_, renderTemplateManageList_, renderTemplateBuilder_,
   wireTemplatePicker_, wireTemplateBuilder_, templateDraftIsOpen, templateBuilderSummary
-} from './templates.js?v=2026-11-06.3';
+} from './templates.js?v=2026-11-06.4';
 
 // Bumped by hand on every shipped change. Shown in Settings so it's a
 // one-glance way to tell whether a device is actually running the latest
 // build, instead of guessing from a stale cached copy.
-const APP_BUILD = '2026-11-06.3';
+const APP_BUILD = '2026-11-06.4';
 
 let activeTab = 'home';
 let expandedTaskId = null;
@@ -1336,14 +1336,18 @@ function renderSettings(settings) {
         return `
           <h3 style="margin-top:12px">Archived</h3>
           <div class="cards">
-            ${archived.map((p) => `
+            ${archived.map((p) => {
+              const prog = projectProgress(p.id);
+              return `
               <div class="card" data-id="${p.id}">
                 <div class="card-title"><span class="project-dot" style="background:${esc(p.chip.color)}"></span> ${esc(p.chip.nickname)}: ${esc(p.title)}</div>
+                <div class="card-meta"><span class="chip">${prog.done}/${prog.total} steps</span></div>
                 <div class="card-actions">
+                  <button data-action="openProject" data-id="${p.id}">View</button>
                   <button data-action="unarchiveProject" data-id="${p.id}">Unarchive</button>
                 </div>
-              </div>
-            `).join('')}
+              </div>`;
+            }).join('')}
           </div>
         `;
       })()}

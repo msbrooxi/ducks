@@ -115,8 +115,24 @@ export function getTaskList() {
 
 // ---- projects (a project is a task with a chip; steps point back at it) ----
 
+// The 3 kids' projects pinned to the top, in this exact order, since those
+// are the ones she actually reaches for constantly (kid-submitted inbox
+// items auto-assign here too, see apps-script/Code.gs's
+// KID_PROJECT_NICKNAME); everything else alphabetized by nickname below
+// them. Matched case-insensitively against chip.nickname, same as the
+// server-side kid-assignment matching.
+const PINNED_PROJECT_NICKNAMES = ['angel', 'max', 'brie'];
+
 export function getProjectList() {
-  return getTaskList().filter((t) => t.chip && !t.projectId && !t.archived);
+  const list = getTaskList().filter((t) => t.chip && !t.projectId && !t.archived);
+  return list.sort((a, b) => {
+    const aPin = PINNED_PROJECT_NICKNAMES.indexOf(a.chip.nickname.toLowerCase());
+    const bPin = PINNED_PROJECT_NICKNAMES.indexOf(b.chip.nickname.toLowerCase());
+    const aRank = aPin === -1 ? Infinity : aPin;
+    const bRank = bPin === -1 ? Infinity : bPin;
+    if (aRank !== bRank) return aRank - bRank;
+    return a.chip.nickname.localeCompare(b.chip.nickname);
+  });
 }
 // Archived projects are deliberately excluded from getProjectList() (and so
 // from every dropdown/filter built on it: quick-add, move-to-project,
