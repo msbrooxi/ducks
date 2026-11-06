@@ -29,36 +29,44 @@ case something here has quietly become relevant.
   business day," or whatever else comes up once more real recurring tasks
   have been lived with. Revisit once asked, not proactively.
 - **Kid-submitted inbox items, with real intake structure** (flagged
-  2026-11-05). The core of this already exists and doesn't need building:
-  `kid/` has a working intake page (one text box + an optional "needed by"
-  date, scoped per kid by a write-only key, see "Kid pages" below), and
-  anything it creates lands in the Inbox tab already showing what/who/when
-  (title, `source` = which kid, `due`). What Stephanie actually asked for
-  on top of that, not yet built:
-  1. **A flag on the Home tab when new Inbox items arrive.** Right now
-     nothing signals a new kid submission exists except opening the Inbox
-     tab and looking; she wants to notice it from Home, where she actually
-     starts her day. Needs a "seen" marker of some kind (a device-local
-     `lastInboxSeenAt` in `getLocal()`'s settings, most likely, compared
-     against the newest inbox item's `createdAt`) so the flag clears once
-     she's looked, not just once-and-forever.
-  2. **Kids seeing where their own request stands** (explicitly called a
-     stretch, "doesn't need to be complex out of the gate"): whether it's
-     still pending, got moved to her real list (approved), or got deleted
-     (declined). This is a real, if small, backend change, not just a
-     frontend one: kid keys currently **cannot read anything**, write-only
-     by design ("Kid keys can only create. They cannot read tasks," see
-     Kid pages below), specifically so a kid can't see Mom's actual list.
-     Giving a kid key *any* read access needs a new, narrowly-scoped Apps
-     Script action, something like `kid_my_submissions`, that takes the
-     requesting kid's own key and returns only tasks where `source` matches
-     that kid's slug (never the full task list), with status collapsed to
-     something kid-legible ("waiting," "approved," "not this time" for a
-     deleted one). Worth thinking through on its own before touching
-     Code.gs's auth model, since loosening "kid keys can't read" at all is
-     a real security-shape change for this repo, however narrow.
-  Revisit once asked, building #1 first (it's pure frontend, no backend
-  change) unless she specifically wants #2 done at the same time.
+  2026-11-05). The core of this already exists: `kid/` has a working
+  intake page (one text box + an optional "needed by" date, scoped per kid
+  by a write-only key, see "Kid pages" below), and anything it creates
+  lands in the Inbox tab already showing what/who/when. A flag for new
+  Inbox arrivals was asked for and built the same day (2026-11-06): a nav
+  badge on the Inbox tab plus a banner at the top of List (moved there,
+  and Home removed outright the same day, see Round 33 below). Still not
+  built, explicitly held off for now (2026-11-06: "hold off... it can
+  wait"), with the shape now spelled out precisely:
+  - **Kids seeing where their own request stands**, specifically three
+    states with a date attached to each: **accepted** (moved out of Inbox
+    onto her real list; shows the task's current `due` date, which she may
+    have adjusted from whatever the kid originally asked for), **rejected**
+    (deleted from Inbox; shows `deletedAt`), **completed** (shows
+    `completedAt`). A task still sitting in Inbox, neither accepted nor
+    rejected yet, is implicitly a fourth "waiting" state with no date.
+  - This is a real, if narrow, backend change, not just a frontend one:
+    kid keys currently **cannot read anything**, write-only by design
+    ("Kid keys can only create. They cannot read tasks," see Kid pages
+    below), specifically so a kid can't see Mom's actual list. Giving a kid
+    key *any* read access needs a new, narrowly-scoped Apps Script action,
+    something like `kid_my_submissions`, that takes the requesting kid's
+    own key and returns only tasks where `source` matches that kid's slug
+    (never the full task list), collapsed to exactly those 4 states above.
+    Worth thinking through on its own before touching Code.gs's auth
+    model, since loosening "kid keys can't read" at all is a real
+    security-shape change for this repo, however narrow.
+  Revisit once asked, not proactively.
+- **Important-vs-urgent prioritization help** (flagged 2026-11-06, same
+  conversation that removed Home): she said directly she still wants help
+  with this eventually, just not at that exact moment ("I'm mostly
+  handling what's right in front of my nose right now"). `doNextList()`/
+  `minutesFilter()`/`score()` in rank.js are the already-built, already-
+  tuned foundation for this (formerly surfaced via Home's "Do next" and "I
+  have X minutes," both removed, see Round 33), deliberately NOT deleted
+  for exactly this reason, see the comment above `doNextList` in rank.js.
+  Whatever this becomes next doesn't need to be built from scratch.
+  Revisit once asked, not proactively.
 
 ## Time rules
 - All dates are evaluated in `America/New_York`.
@@ -1349,6 +1357,37 @@ move-to-project, the List filter, templates' add-to-existing picker) and
 the Projects tab's own main grid all stay consistent automatically.
 Verified directly in Node: 6 projects seeded in scrambled order come back
 Angel, Max, Brie, then the rest alphabetically.
+
+### Round 33: Home removed (2026-11-06)
+
+Stephanie: "I mostly just use List view now... maybe we don't need a home
+screen at all." Confirmed what should happen to Home's two exclusive
+features (Do Next, "I have X minutes"): drop both entirely for now, not
+fold into List, see the Backlog's important-vs-urgent entry above for why
+the underlying `rank.js` logic stayed rather than getting deleted outright.
+The Inbox-arrival flag (built earlier the same day for Home, see above)
+needed a new location: she asked for both a badge on the Inbox nav tab AND
+a banner at the top of List, not just one.
+
+- Removed `renderHome()`, `renderMinutesResults()`, the Home nav tab
+  entry, and the now-dead `minutesQuery` module state entirely.
+- Default `activeTab` changed from `'home'` to `'list'`: the app now opens
+  straight to List.
+- `renderNav()` takes a `newInbox` count and renders a `.nav-badge` pill
+  next to "Inbox" when nonzero; `render()` computes
+  `newInboxCount_(tasks)` once and passes it through.
+- The same `#inboxFlag` banner markup/behavior that lived on Home moved to
+  the top of `renderList()` instead; clicking it still jumps to the Inbox
+  tab the same way.
+- `doNextList`/`minutesFilter` in rank.js are now unused by anything, but
+  deliberately kept (not deleted), with a comment explaining why, per the
+  Backlog entry above.
+
+Verified live: Home is gone from the nav entirely, the app lands on List
+by default, both the badge and the banner appear together for a new Inbox
+item, clicking either jumps to Inbox, and both clear together once Inbox
+actually renders (same `markInboxSeen_()` call site as before, now reached
+from either entry point).
 
 ## Build order
 0. **Test first:** throwaway Apps Script + Pages page. Stephanie tests from

@@ -3,25 +3,27 @@ import {
   getLocal, saveLocal, getConn, saveConn, isPastDue, ducksDayDate,
   logEvent, CATEGORIES, SIZES, nowIso,
   getProjectList, getArchivedProjectList, getSteps, projectProgress
-} from './store.js?v=2026-11-06.4';
-import { scheduleSync, syncNow, onSyncStatus, startBackgroundSync, exportEventLog } from './sync.js?v=2026-11-06.4';
-import { doNextList, minutesFilter, fiveDucksFill, sortForList, LIST_SORTS, DEFAULT_SORT_DIR, SORT_DIR_LABELS, isBlocked } from './rank.js?v=2026-11-06.4';
-import { playQuack, playParade } from './quack.js?v=2026-11-06.4';
-import { computeFirstDue, computeNextDue, FREQUENCIES, recurrenceLabel, WEEKDAY_NAMES, MONTH_NAMES } from './recurrence.js?v=2026-11-06.4';
+} from './store.js?v=2026-11-06.5';
+import { scheduleSync, syncNow, onSyncStatus, startBackgroundSync, exportEventLog } from './sync.js?v=2026-11-06.5';
+import { fiveDucksFill, sortForList, LIST_SORTS, DEFAULT_SORT_DIR, SORT_DIR_LABELS, isBlocked } from './rank.js?v=2026-11-06.5';
+import { playQuack, playParade } from './quack.js?v=2026-11-06.5';
+import { computeFirstDue, computeNextDue, FREQUENCIES, recurrenceLabel, WEEKDAY_NAMES, MONTH_NAMES } from './recurrence.js?v=2026-11-06.5';
 import {
   createTemplateFromProject, editTemplate, deleteTemplate,
   renderTemplatePickerBody_, renderTemplateManageList_, renderTemplateBuilder_,
   wireTemplatePicker_, wireTemplateBuilder_, templateDraftIsOpen, templateBuilderSummary
-} from './templates.js?v=2026-11-06.4';
+} from './templates.js?v=2026-11-06.5';
 
 // Bumped by hand on every shipped change. Shown in Settings so it's a
 // one-glance way to tell whether a device is actually running the latest
 // build, instead of guessing from a stale cached copy.
-const APP_BUILD = '2026-11-06.4';
+const APP_BUILD = '2026-11-06.5';
 
-let activeTab = 'home';
+// List, not Home: Home (Do Next + I have X minutes) was removed 2026-11-06
+// at Stephanie's request, she wasn't using it and preferred working
+// straight from the full List view instead.
+let activeTab = 'list';
 let expandedTaskId = null;
-let minutesQuery = null;
 let listFilters = { category: '', size: '', ducks: '', projects: [], search: '', hideBlocked: false, sort: 'date', dir: {} };
 // Typing in the List tab's search box debounces its own re-render (a full
 // render on every keystroke would tear down and recreate the input,
@@ -373,15 +375,14 @@ function render() {
   app.appendChild(renderHeader());
 
   let body;
-  if (activeTab === 'home') body = renderHome(tasks, settings, today);
-  else if (activeTab === 'inbox') body = renderInbox(tasks);
+  if (activeTab === 'inbox') body = renderInbox(tasks);
   else if (activeTab === 'list') body = renderList(tasks, settings, today);
   else if (activeTab === 'projects') body = renderProjects();
   else if (activeTab === 'done') body = renderDone(tasks);
   else body = renderSettings(settings);
 
   app.appendChild(body);
-  app.appendChild(renderNav());
+  app.appendChild(renderNav(newInboxCount_(tasks)));
 
   const fill = fiveDucksFill(tasks, today);
   lastFiveDucksWhole = Math.floor(fill);
@@ -445,10 +446,11 @@ export function openProject(id) {
   render();
 }
 
-function renderNav() {
+function renderNav(newInbox = 0) {
   const tabs = [
-    ['home', '🏠 Home'], ['list', '📋 List'], ['done', '✅ Done'],
-    ['inbox', '📥 Inbox'], ['projects', '🗂️ Projects'], ['settings', '⚙️ Settings']
+    ['list', '📋 List'], ['done', '✅ Done'],
+    ['inbox', `📥 Inbox${newInbox > 0 ? ` <span class="nav-badge">${newInbox}</span>` : ''}`],
+    ['projects', '🗂️ Projects'], ['settings', '⚙️ Settings']
   ];
   const nav = el(`<nav class="tabs">${tabs.map(([id, label]) => (
     `<button data-tab="${id}" class="${activeTab === id ? 'active' : ''}">${label}</button>`
@@ -480,80 +482,6 @@ function fiveDucksRow(fill) {
       <div class="ducks-row-base">${duckIcons(slots, 32)}</div>
       <div class="ducks-row-fill" style="width:${pct}%">${duckIcons(slots, 32)}</div>
     </div>
-  `;
-}
-
-function renderHome(tasks, settings, today) {
-  const fill = fiveDucksFill(tasks, today);
-  const next = doNextList(tasks, settings, today);
-  const newInbox = newInboxCount_(tasks);
-  const wrap = el(`
-    <section class="tabpanel">
-      ${newInbox > 0 ? `
-        <button type="button" id="inboxFlag" class="inbox-flag">
-          📥 ${newInbox} new in Inbox
-        </button>
-      ` : ''}
-      ${fiveDucksRow(fill)}
-      ${fill >= 5 ? `<p class="parade">${duckIcons(3, 22)} All five ducks in a row today! ${duckIcons(3, 22)}</p>` : ''}
-
-      <div class="slider-card">
-        <label for="rankSlider">Deadline first
-          <input id="rankSlider" type="range" min="0" max="100" value="${settings.rankSlider}">
-        Ducks first</label>
-      </div>
-
-      <h2>Do next</h2>
-      <div class="cards">
-        ${next.length ? next.map((t) => taskCard(t, today)).join('') : '<p class="empty">Nothing on deck. Nice.</p>'}
-      </div>
-
-      <h2>I have <span id="minLabel">${minutesQuery ?? '__'}</span> minutes</h2>
-      <form id="minutesForm" class="minutes-form">
-        <input id="minutesInput" type="number" min="1" placeholder="e.g. 15" value="${minutesQuery ?? ''}">
-        <button type="submit">Show what fits</button>
-      </form>
-      <div id="minutesResults"></div>
-    </section>
-  `);
-
-  const inboxFlagBtn = wrap.querySelector('#inboxFlag');
-  if (inboxFlagBtn) {
-    inboxFlagBtn.addEventListener('click', () => {
-      activeTab = 'inbox';
-      expandedTaskId = null;
-      render();
-    });
-  }
-
-  wrap.querySelector('#rankSlider').addEventListener('input', (e) => {
-    saveSettings({ rankSlider: Number(e.target.value) });
-    scheduleSync();
-  });
-  wrap.querySelector('#rankSlider').addEventListener('change', render);
-
-  const minutesForm = wrap.querySelector('#minutesForm');
-  minutesForm.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const v = Number(wrap.querySelector('#minutesInput').value);
-    minutesQuery = v > 0 ? v : null;
-    renderMinutesResults(wrap, tasks, settings);
-  });
-  if (minutesQuery) renderMinutesResults(wrap, tasks, settings);
-
-  return wrap;
-}
-
-function renderMinutesResults(wrap, tasks, settings) {
-  const box = wrap.querySelector('#minutesResults');
-  wrap.querySelector('#minLabel').textContent = minutesQuery;
-  if (!minutesQuery) { box.innerHTML = ''; return; }
-  const { fits, hiddenUnsized } = minutesFilter(tasks, minutesQuery, settings);
-  box.innerHTML = `
-    <div class="cards">
-      ${fits.length ? fits.map((t) => taskCard(t)).join('') : '<p class="empty">Nothing sized to fit. Try a bigger number, or size up a task.</p>'}
-    </div>
-    ${hiddenUnsized ? `<p class="hint">${hiddenUnsized} task(s) with no size (or XL) are hidden here. Give them a size to see them.</p>` : ''}
   `;
 }
 
@@ -915,9 +843,15 @@ function renderList(tasks, settings, today) {
   frozenListForTaskId = expandedTaskId;
 
   const fill = fiveDucksFill(tasks, today);
+  const newInbox = newInboxCount_(tasks);
 
   const wrap = el(`
     <section class="tabpanel">
+      ${newInbox > 0 ? `
+        <button type="button" id="inboxFlag" class="inbox-flag">
+          📥 ${newInbox} new in Inbox
+        </button>
+      ` : ''}
       ${fiveDucksRow(fill)}
       <h2>List</h2>
       <div class="filters">
@@ -949,6 +883,14 @@ function renderList(tasks, settings, today) {
       </div>
     </section>
   `);
+  const inboxFlagBtn = wrap.querySelector('#inboxFlag');
+  if (inboxFlagBtn) {
+    inboxFlagBtn.addEventListener('click', () => {
+      activeTab = 'inbox';
+      expandedTaskId = null;
+      render();
+    });
+  }
   const resortAnd_ = (fn) => (e) => { fn(e); frozenListOrder = null; render(); };
   wrap.querySelector('#fSort').addEventListener('change', resortAnd_((e) => { listFilters.sort = e.target.value; }));
   wrap.querySelector('#fDir').addEventListener('click', resortAnd_(() => {

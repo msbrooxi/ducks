@@ -2,7 +2,7 @@
 // meant to be easy to re-tune from Settings without touching this file's
 // shape (the numbers all come from the settings object).
 
-import { isPastDue, ducksDayDate } from './store.js?v=2026-11-06.4';
+import { isPastDue, ducksDayDate } from './store.js?v=2026-11-06.5';
 
 function daysUntil_(dueStr, today) {
   if (!dueStr) return Infinity;
@@ -52,6 +52,16 @@ function byId_(tasks) {
   return map;
 }
 
+// doNextList/minutesFilter are no longer called from anywhere (Home, the
+// only place that used either, was removed 2026-11-06: Stephanie wasn't
+// using it, she works straight from the full List view instead). Kept
+// here rather than deleted: she said directly, in that same conversation,
+// that she still wants help with important-vs-urgent prioritization later,
+// just not at that moment. This scoring logic is the natural foundation
+// for whatever that becomes, so rebuilding it from scratch later would be
+// pure waste. If a future pass through this file finds these still unused
+// with no such plan on record anymore, that's the signal it's safe to
+// actually remove them.
 export function doNextList(tasks, settings, today = ducksDayDate(), count = 5) {
   const byId = byId_(tasks);
   // A project "head" task (has a chip) is a container, not something to do
