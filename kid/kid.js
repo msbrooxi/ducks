@@ -2,7 +2,7 @@
 // script checks the key on every request), so it's fine to commit here.
 // Stephanie: paste your deployed web app URL below once, no key needed
 // here since it comes from each kid's own link (?k=...).
-const WEBAPP_URL = 'PASTE_WEBAPP_URL_HERE';
+const WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbyBYuTZw1E_5oJhzPeEjHONSOWROMWcQrgSAPLm5xQ0695kie0JqROhZCpzXVA5Vg40/exec';
 
 const params = new URLSearchParams(location.search);
 const key = params.get('k') || '';

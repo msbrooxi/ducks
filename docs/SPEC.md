@@ -249,11 +249,30 @@ recorded.
 
 ## Kid pages
 - URL: `https://msbrooxi.github.io/ducks/kid/?k=<kidKey>`
-- Page asks the server for the kid's first name to greet them, then shows a
-  text box and an optional "needed by" date. Nothing else.
+- Page ("Ask Mom," `kid/index.html` + `kid/kid.js`) shows a text box and an
+  optional "needed by" date, nothing else, no fetch on load. The greeting
+  (corrected 2026-11-06, the doc previously said the page asks the server
+  for the kid's name up front, which it doesn't) comes back personalized
+  on SUBMIT, not before: Code.gs's `handleKidSubmit_` derives the kid's
+  name from the key (whatever follows `KID_` in its Script Property, see
+  "Keys" in Code.gs's own header comment) and replies `"Quack! Mom got it,
+  <name>."`.
 - Server creates a task: status inbox, source kid slug, due = needed-by,
   ducks null, then logs `kid_submitted`.
 - Kid keys can only create. They cannot read tasks.
+- **`kid/kid.js`'s `WEBAPP_URL` is a separate, manual one-time setup step**
+  (added 2026-11-06, after Stephanie's first real kid-key test on Rayvn's
+  link hit "Not set up yet, tell Mom."): that file ships with a literal
+  `'PASTE_WEBAPP_URL_HERE'` placeholder, and nothing else in the repo fills
+  it in automatically, since this is a static page with no build step and
+  no access to the main app's own Settings-stored connection. It needs the
+  same deployed web app URL as the main app's Settings screen (the URL
+  itself isn't secret, only the keys are, per the comment already in that
+  file), pasted in by hand, once, whenever the Apps Script deployment's URL
+  changes (which it normally doesn't, redeploying as "New version" under
+  the same deployment keeps the same URL). This had silently never been
+  done since the kid pages were first built; nothing exercised it until an
+  actual kid tried to submit something for real.
 
 ## Ranking
 - Past-due tasks (oldest due first) always fill Do Next slots first and are
