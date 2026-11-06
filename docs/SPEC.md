@@ -1271,6 +1271,56 @@ unlike the owner/kid keys), which lives only on her device's Settings
 screen; waiting on that before patching `kid/kid.js` and adding the step to
 `docs/setup.md` so this can't happen again for a future kid key.
 
+(Resolved later the same day once she provided the URL; see Kid pages
+above and the `WEBAPP_URL` commit. Angel's and Rayvn's links both
+confirmed working.)
+
+### Round 31: kid-submit quack, auto-project-assignment, inline project creation (2026-11-06)
+
+Three asks once the kid keys were confirmed live:
+
+- **Quack on successful kid submission.** `kid/index.html`'s `<script>`
+  tag needed `type="module"` added (it was a plain classic script before,
+  no `import`/`export` possible) so `kid/kid.js` could
+  `import { playQuack } from '../app/quack.js'` and call it on the success
+  path, the exact same module/file/AudioContext-handling as the main app,
+  not a reimplementation. Works regardless of which page imports it since
+  `quack.js` resolves its own audio file against `import.meta.url` (its
+  own URL), not the importing page's, per the Round 24 fix. Verified live
+  with the same AudioContext-wrapping technique as that round: a mocked
+  successful kid_submit response (no live Apps Script backend in a local
+  test) still correctly reaches a real `source.start()` on a `running`
+  context.
+- **Auto-assign kid submissions to a matching project.** New
+  `KID_PROJECT_NICKNAME` map in Code.gs (`{ angel: 'Angel', max: 'Max',
+  rayvn: 'Brie' }`, the last one deliberately not matching the kid slug:
+  Rayvn's kid-key display name vs. the actual "Brie" project nickname she
+  wants used in Ducks). `handleKidSubmit_` now looks up a project by
+  nickname (case-insensitive, matched against real, non-deleted project
+  heads only) and sets the new inbox task's `projectId` and `order`
+  (continuing past whatever's already on that project) at creation time,
+  so it's already correctly placed once she moves it from Inbox to the
+  real list, no manual re-filing. If no project with that nickname exists
+  yet, `projectId` stays null, same as before this existed, not an error;
+  she needs to actually create "Angel"/"Max"/"Brie" projects (if she
+  hasn't already) for this to have anywhere to land. **Needs the
+  apps-script redeploy this time for real** (unlike the Round 29
+  correction about `archived`): this is new application logic inside
+  `handleKidSubmit_` itself, not a question of the generic field-merge
+  loop, so the OLD deployed code simply doesn't have this behavior at all
+  until she redeploys. Verified the pure lookup/ordering logic directly in
+  Node (nickname matching, case-insensitivity, a deleted project correctly
+  not matching, order continuing past existing non-deleted steps only).
+- **"+ Create new project..." from a task's own Project dropdown.** Added
+  as an extra `<option>` in `taskEditor()`'s Project select; picking it
+  calls a new `createProjectInline_()` (two `prompt()`s for title and
+  nickname, a color auto-picked by cycling `PROJECT_COLORS`) instead of
+  requiring a trip to the Projects tab first. Cancelling either prompt
+  re-renders to snap the dropdown back to the task's actual current
+  project, since the browser otherwise leaves "+ Create new project..."
+  showing as selected even though nothing was saved. Verified live:
+  creates the project, assigns the task to it at order 0.
+
 ## Build order
 0. **Test first:** throwaway Apps Script + Pages page. Stephanie tests from
    iPhone and a Samsung: write, read, kid submit. Stop and rethink if it fails.

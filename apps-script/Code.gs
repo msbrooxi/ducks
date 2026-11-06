@@ -215,6 +215,36 @@ function appendEvents_(newEvents) {
 
 // ---- kid: create-only submission into the owner's inbox ----
 
+// Which project (by nickname, matched case-insensitively) each kid's
+// submissions should land under, added 2026-11-06. Rayvn's goes to a
+// project nicknamed "Brie," not "Rayvn": the kid key/display name is
+// Rayvn by her own request, but the actual project in Ducks is still
+// called Brie. If no project with that nickname exists yet, the
+// submission just gets no project (projectId stays null), same as before
+// this existed, not an error.
+var KID_PROJECT_NICKNAME = { angel: 'Angel', max: 'Max', rayvn: 'Brie' };
+
+function findProjectIdByNickname_(store, nickname) {
+  var target = nickname.toLowerCase();
+  for (var id in store.tasks) {
+    var t = store.tasks[id];
+    if (t && t.chip && !t.projectId && !t.deletedAt && t.chip.nickname &&
+        t.chip.nickname.toLowerCase() === target) {
+      return id;
+    }
+  }
+  return null;
+}
+
+function countActiveStepsForProject_(store, projectId) {
+  var count = 0;
+  for (var id in store.tasks) {
+    var t = store.tasks[id];
+    if (t && t.projectId === projectId && !t.deletedAt) count++;
+  }
+  return count;
+}
+
 function handleKidSubmit_(body, kidName) {
   var store = readJsonFile_(DATA_FILE, { tasks: {}, settings: DEFAULT_SETTINGS });
   if (!store.tasks) store.tasks = {};
@@ -222,6 +252,10 @@ function handleKidSubmit_(body, kidName) {
   var now = new Date().toISOString();
   var id = Utilities.getUuid();
   var slug = kidName.toLowerCase();
+
+  var projectNickname = KID_PROJECT_NICKNAME[slug];
+  var projectId = projectNickname ? findProjectIdByNickname_(store, projectNickname) : null;
+  var order = projectId ? countActiveStepsForProject_(store, projectId) : null;
 
   var fieldUpdatedAt = {};
   for (var i = 0; i < CORE_FIELDS.length; i++) fieldUpdatedAt[CORE_FIELDS[i]] = now;
@@ -243,10 +277,11 @@ function handleKidSubmit_(body, kidName) {
     completedAt: null,
     deletedAt: null,
     recurrence: null,
-    projectId: null,
-    order: null,
+    projectId: projectId,
+    order: order,
     chip: null,
     dependsOn: [],
+    archived: false,
     seq: null,
     fieldUpdatedAt: fieldUpdatedAt
   };

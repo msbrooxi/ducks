@@ -3,21 +3,21 @@ import {
   getLocal, saveLocal, getConn, saveConn, isPastDue, ducksDayDate,
   logEvent, CATEGORIES, SIZES, nowIso,
   getProjectList, getArchivedProjectList, getSteps, projectProgress
-} from './store.js?v=2026-11-06.2';
-import { scheduleSync, syncNow, onSyncStatus, startBackgroundSync, exportEventLog } from './sync.js?v=2026-11-06.2';
-import { doNextList, minutesFilter, fiveDucksFill, sortForList, LIST_SORTS, DEFAULT_SORT_DIR, SORT_DIR_LABELS, isBlocked } from './rank.js?v=2026-11-06.2';
-import { playQuack, playParade } from './quack.js?v=2026-11-06.2';
-import { computeFirstDue, computeNextDue, FREQUENCIES, recurrenceLabel, WEEKDAY_NAMES, MONTH_NAMES } from './recurrence.js?v=2026-11-06.2';
+} from './store.js?v=2026-11-06.3';
+import { scheduleSync, syncNow, onSyncStatus, startBackgroundSync, exportEventLog } from './sync.js?v=2026-11-06.3';
+import { doNextList, minutesFilter, fiveDucksFill, sortForList, LIST_SORTS, DEFAULT_SORT_DIR, SORT_DIR_LABELS, isBlocked } from './rank.js?v=2026-11-06.3';
+import { playQuack, playParade } from './quack.js?v=2026-11-06.3';
+import { computeFirstDue, computeNextDue, FREQUENCIES, recurrenceLabel, WEEKDAY_NAMES, MONTH_NAMES } from './recurrence.js?v=2026-11-06.3';
 import {
   createTemplateFromProject, editTemplate, deleteTemplate,
   renderTemplatePickerBody_, renderTemplateManageList_, renderTemplateBuilder_,
   wireTemplatePicker_, wireTemplateBuilder_, templateDraftIsOpen, templateBuilderSummary
-} from './templates.js?v=2026-11-06.2';
+} from './templates.js?v=2026-11-06.3';
 
 // Bumped by hand on every shipped change. Shown in Settings so it's a
 // one-glance way to tell whether a device is actually running the latest
 // build, instead of guessing from a stale cached copy.
-const APP_BUILD = '2026-11-06.2';
+const APP_BUILD = '2026-11-06.3';
 
 let activeTab = 'home';
 let expandedTaskId = null;
@@ -308,6 +308,27 @@ function deleteProject(id) {
 }
 function restoreTask(id) {
   mutateTask(id, { deletedAt: null }, 'restored');
+}
+// Quick project creation from a task's own Project dropdown ("+ Create new
+// project..."), instead of having to back out to the Projects tab to make
+// one first. A color is picked automatically (cycling through
+// PROJECT_COLORS by however many projects already exist) rather than
+// asked for, same as everything else about this flow being as few steps
+// as possible; she can't change a project's color after creation from
+// anywhere else either, so this isn't losing anything the full "+ New
+// project" form on the Projects tab actually offers beyond that one step.
+// Returns the new project task, or null if she cancelled either prompt.
+function createProjectInline_() {
+  const title = prompt('New project title:');
+  if (!title || !title.trim()) return null;
+  const nickname = prompt('Short nickname (shown as a chip wherever its steps appear):', title.trim().slice(0, 16));
+  if (!nickname || !nickname.trim()) return null;
+  const color = PROJECT_COLORS[getProjectList().length % PROJECT_COLORS.length];
+  const p = newTask({ title: title.trim(), size: 'XL', chip: { nickname: nickname.trim(), color } });
+  saveTask(p);
+  logEvent('created', p.id, { project: true });
+  scheduleSync();
+  return p;
 }
 function moveToList(id) {
   mutateTask(id, { status: 'active' }, 'edited', { field: 'status', to: 'active' });
@@ -608,6 +629,7 @@ function taskEditor(t) {
         <label>Project
           <select data-action-select="moveToProject" data-id="${t.id}">
             <option value="">(none, not part of a project)</option>
+            <option value="__new__">+ Create new project...</option>
             ${getProjectList().map((p) => (
               `<option value="${p.id}" ${t.projectId === p.id ? 'selected' : ''}>${esc(p.chip.nickname)}: ${esc(p.title)}</option>`
             )).join('')}
@@ -734,6 +756,16 @@ function attachGlobalDelegation() {
   app.addEventListener('change', (e) => {
     if (e.target.dataset && e.target.dataset.actionSelect === 'moveToProject') {
       const id = e.target.dataset.id;
+      if (e.target.value === '__new__') {
+        const p = createProjectInline_();
+        // Cancelled: re-render to snap the dropdown back to the task's
+        // actual current project, since the browser otherwise leaves
+        // "+ Create new project..." showing as selected even though
+        // nothing was saved.
+        if (!p) { render(); return; }
+        mutateTask(id, { projectId: p.id, order: 0 }, 'edited', { field: 'projectId', to: p.id });
+        return;
+      }
       const projectId = e.target.value || null;
       const order = projectId ? getSteps(projectId).length : null;
       mutateTask(id, { projectId, order }, 'edited', { field: 'projectId', to: projectId });

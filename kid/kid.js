@@ -4,6 +4,11 @@
 // here since it comes from each kid's own link (?k=...).
 const WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbyBYuTZw1E_5oJhzPeEjHONSOWROMWcQrgSAPLm5xQ0695kie0JqROhZCpzXVA5Vg40/exec';
 
+// The exact same quack as the main app, not a different one: same file,
+// same AudioContext-resume handling. Loading this page as a module (see
+// index.html's <script type="module">) is what makes this import work.
+import { playQuack } from '../app/quack.js';
+
 const params = new URLSearchParams(location.search);
 const key = params.get('k') || '';
 
@@ -38,6 +43,7 @@ form.addEventListener('submit', async (e) => {
       form.reset();
       form.style.display = 'none';
       result.textContent = data.greeting || 'Quack! Got it.';
+      playQuack();
     } else {
       result.textContent = "That didn't work: " + (data.error || 'unknown error');
       form.querySelector('button').disabled = false;
