@@ -88,7 +88,11 @@ category      "admin" | "conversation" | "meetup" | "deep" | "decision" |
               work, anything manual you actively have to DO)
 status        "inbox" | "active" | "done"      (Phase 2 adds "waiting")
 doingSince    ISO | null   set by Start; cleared on done/snooze
-source        "me" | "angel" | "max" | "brie"
+source        "me" | "angel" | "max" | "rayvn"   (Gabriella's kid-key slug is
+              "rayvn," the name she wants used for this purpose specifically,
+              not her legal/everyday name; the server derives this straight
+              from whatever follows "KID_" in the Script Property name, so
+              it isn't hardcoded anywhere and could change again the same way)
 createdAt, updatedAt, completedAt, deletedAt   ISO | null
 fieldUpdatedAt  { [field]: ISO }   added 2026-09-29, see Sync protocol below;
                                    one timestamp per mergeable field, used

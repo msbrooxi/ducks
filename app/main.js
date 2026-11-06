@@ -3,21 +3,21 @@ import {
   getLocal, saveLocal, getConn, saveConn, isPastDue, ducksDayDate,
   logEvent, CATEGORIES, SIZES, nowIso,
   getProjectList, getArchivedProjectList, getSteps, projectProgress
-} from './store.js?v=2026-11-05.2';
-import { scheduleSync, syncNow, onSyncStatus, startBackgroundSync, exportEventLog } from './sync.js?v=2026-11-05.2';
-import { doNextList, minutesFilter, fiveDucksFill, sortForList, LIST_SORTS, DEFAULT_SORT_DIR, SORT_DIR_LABELS, isBlocked } from './rank.js?v=2026-11-05.2';
-import { playQuack, playParade } from './quack.js?v=2026-11-05.2';
-import { computeFirstDue, computeNextDue, FREQUENCIES, recurrenceLabel, WEEKDAY_NAMES, MONTH_NAMES } from './recurrence.js?v=2026-11-05.2';
+} from './store.js?v=2026-11-06.1';
+import { scheduleSync, syncNow, onSyncStatus, startBackgroundSync, exportEventLog } from './sync.js?v=2026-11-06.1';
+import { doNextList, minutesFilter, fiveDucksFill, sortForList, LIST_SORTS, DEFAULT_SORT_DIR, SORT_DIR_LABELS, isBlocked } from './rank.js?v=2026-11-06.1';
+import { playQuack, playParade } from './quack.js?v=2026-11-06.1';
+import { computeFirstDue, computeNextDue, FREQUENCIES, recurrenceLabel, WEEKDAY_NAMES, MONTH_NAMES } from './recurrence.js?v=2026-11-06.1';
 import {
   createTemplateFromProject, editTemplate, deleteTemplate,
   renderTemplatePickerBody_, renderTemplateManageList_, renderTemplateBuilder_,
   wireTemplatePicker_, wireTemplateBuilder_, templateDraftIsOpen, templateBuilderSummary
-} from './templates.js?v=2026-11-05.2';
+} from './templates.js?v=2026-11-06.1';
 
 // Bumped by hand on every shipped change. Shown in Settings so it's a
 // one-glance way to tell whether a device is actually running the latest
 // build, instead of guessing from a stale cached copy.
-const APP_BUILD = '2026-11-05.2';
+const APP_BUILD = '2026-11-06.1';
 
 let activeTab = 'home';
 let expandedTaskId = null;
@@ -1340,8 +1340,8 @@ function renderSettings(settings) {
       </details>
 
       <h2>Kid links</h2>
-      <p class="hint">Paste each kid's key (the value you set as KID_ANGEL / KID_MAX / KID_BRIE in Apps Script) to get their shareable link.</p>
-      ${['angel', 'max', 'brie'].map((slug) => `
+      <p class="hint">Paste each kid's key (the value you set as KID_ANGEL / KID_MAX / KID_RAYVN in Apps Script) to get their shareable link.</p>
+      ${['angel', 'max', 'rayvn'].map((slug) => `
         <label>${slug[0].toUpperCase() + slug.slice(1)}'s key
           <input data-kidkey="${slug}" value="${esc(local['kid_' + slug] || '')}" placeholder="key for ${slug}">
         </label>
@@ -1438,7 +1438,7 @@ function renderSettings(settings) {
     render();
   });
 
-  for (const slug of ['angel', 'max', 'brie']) {
+  for (const slug of ['angel', 'max', 'rayvn']) {
     const input = wrap.querySelector(`[data-kidkey="${slug}"]`);
     const updateLink = () => {
       const key = input.value.trim();
