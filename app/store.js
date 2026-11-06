@@ -39,7 +39,11 @@ const DEFAULT_SETTINGS = {
   updatedAt: '1970-01-01T00:00:00.000Z'
 };
 
-const DEFAULT_LOCAL = { muted: false, theme: 'auto' };
+// lastInboxSeenAt: device-local, never synced (a glance at the Inbox on
+// her phone shouldn't silently clear the flag on her laptop too, and vice
+// versa). null means "never looked," so every current Inbox item counts
+// as new the first time this matters.
+const DEFAULT_LOCAL = { muted: false, theme: 'auto', lastInboxSeenAt: null };
 
 function readJson_(key, fallback) {
   try {

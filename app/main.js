@@ -3,21 +3,21 @@ import {
   getLocal, saveLocal, getConn, saveConn, isPastDue, ducksDayDate,
   logEvent, CATEGORIES, SIZES, nowIso,
   getProjectList, getArchivedProjectList, getSteps, projectProgress
-} from './store.js?v=2026-11-06.1';
-import { scheduleSync, syncNow, onSyncStatus, startBackgroundSync, exportEventLog } from './sync.js?v=2026-11-06.1';
-import { doNextList, minutesFilter, fiveDucksFill, sortForList, LIST_SORTS, DEFAULT_SORT_DIR, SORT_DIR_LABELS, isBlocked } from './rank.js?v=2026-11-06.1';
-import { playQuack, playParade } from './quack.js?v=2026-11-06.1';
-import { computeFirstDue, computeNextDue, FREQUENCIES, recurrenceLabel, WEEKDAY_NAMES, MONTH_NAMES } from './recurrence.js?v=2026-11-06.1';
+} from './store.js?v=2026-11-06.2';
+import { scheduleSync, syncNow, onSyncStatus, startBackgroundSync, exportEventLog } from './sync.js?v=2026-11-06.2';
+import { doNextList, minutesFilter, fiveDucksFill, sortForList, LIST_SORTS, DEFAULT_SORT_DIR, SORT_DIR_LABELS, isBlocked } from './rank.js?v=2026-11-06.2';
+import { playQuack, playParade } from './quack.js?v=2026-11-06.2';
+import { computeFirstDue, computeNextDue, FREQUENCIES, recurrenceLabel, WEEKDAY_NAMES, MONTH_NAMES } from './recurrence.js?v=2026-11-06.2';
 import {
   createTemplateFromProject, editTemplate, deleteTemplate,
   renderTemplatePickerBody_, renderTemplateManageList_, renderTemplateBuilder_,
   wireTemplatePicker_, wireTemplateBuilder_, templateDraftIsOpen, templateBuilderSummary
-} from './templates.js?v=2026-11-06.1';
+} from './templates.js?v=2026-11-06.2';
 
 // Bumped by hand on every shipped change. Shown in Settings so it's a
 // one-glance way to tell whether a device is actually running the latest
 // build, instead of guessing from a stale cached copy.
-const APP_BUILD = '2026-11-06.1';
+const APP_BUILD = '2026-11-06.2';
 
 let activeTab = 'home';
 let expandedTaskId = null;
@@ -326,6 +326,20 @@ function plusDays(n, from = new Date()) {
   return d.toISOString().slice(0, 10);
 }
 
+// A kid-submitted Inbox item used to have no visible signal anywhere except
+// opening the Inbox tab and noticing, which she wouldn't think to do until
+// she already needed it (a signature deadline, a candy-day ask). Compared
+// against a device-local "last looked" timestamp rather than anything
+// synced, so checking the Inbox on her phone doesn't silently clear the
+// flag on her laptop too: each device notices on its own.
+function newInboxCount_(tasks) {
+  const seen = getLocal().lastInboxSeenAt;
+  return tasks.filter((t) => t.status === 'inbox' && (!seen || t.createdAt > seen)).length;
+}
+function markInboxSeen_() {
+  saveLocal({ lastInboxSeenAt: nowIso() });
+}
+
 // ---------- rendering ----------
 
 function render() {
@@ -451,8 +465,14 @@ function fiveDucksRow(fill) {
 function renderHome(tasks, settings, today) {
   const fill = fiveDucksFill(tasks, today);
   const next = doNextList(tasks, settings, today);
+  const newInbox = newInboxCount_(tasks);
   const wrap = el(`
     <section class="tabpanel">
+      ${newInbox > 0 ? `
+        <button type="button" id="inboxFlag" class="inbox-flag">
+          📥 ${newInbox} new in Inbox
+        </button>
+      ` : ''}
       ${fiveDucksRow(fill)}
       ${fill >= 5 ? `<p class="parade">${duckIcons(3, 22)} All five ducks in a row today! ${duckIcons(3, 22)}</p>` : ''}
 
@@ -475,6 +495,15 @@ function renderHome(tasks, settings, today) {
       <div id="minutesResults"></div>
     </section>
   `);
+
+  const inboxFlagBtn = wrap.querySelector('#inboxFlag');
+  if (inboxFlagBtn) {
+    inboxFlagBtn.addEventListener('click', () => {
+      activeTab = 'inbox';
+      expandedTaskId = null;
+      render();
+    });
+  }
 
   wrap.querySelector('#rankSlider').addEventListener('input', (e) => {
     saveSettings({ rankSlider: Number(e.target.value) });
@@ -768,6 +797,10 @@ function isTypingAnywhere_() {
 
 function renderInbox(tasks) {
   const inbox = tasks.filter((t) => t.status === 'inbox');
+  // Opening the tab IS looking, so clear the flag right here rather than
+  // waiting on some explicit "mark as read" action nobody would remember
+  // to click.
+  markInboxSeen_();
   return el(`
     <section class="tabpanel">
       <h2>Inbox</h2>

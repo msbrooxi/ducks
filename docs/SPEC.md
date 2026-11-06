@@ -1202,13 +1202,55 @@ rather than hand-rolling the merge, so the per-field `fieldUpdatedAt`
 stamping and dirty-tracking that the real sync protocol depends on happens
 exactly the way the app itself would do it.
 
-**Also:** she'll need to paste the updated `apps-script/Code.gs` into her
-Apps Script editor and redeploy for the new `archived` field to actually
-merge correctly server-side; until she does, `archived` falls back to
-Code.gs's existing whole-task-by-`updatedAt` merge path for that one field
-specifically (same graceful fallback described in the Sync protocol section
-for any field missing from an older deployed copy of CORE_FIELDS), not a
-hard failure, but worth doing soon rather than leaving it stale.
+**Correction, same day:** originally said here that she'd need to redeploy
+`apps-script/Code.gs` for `archived` to merge correctly server-side. That
+was wrong, caught after re-reading `mergeTask_` more closely: its per-field
+loop (`for (var field in incoming)`) iterates over whatever's actually
+present on the incoming task, it was never gated by the server's own
+`CORE_FIELDS` list at all. Server-side `CORE_FIELDS` only matters for
+`ensureFieldUpdatedAt_`'s backfill of a field that already has real data
+server-side but predates per-field tracking, which doesn't apply to a
+brand-new field like `archived` that never existed before. So this would
+have worked correctly even without the redeploy. She redeployed anyway
+(confirmed: Version 7, 2026-11-05), which is harmless and keeps the server
+copy current, just wasn't the blocking step it was made out to be.
+
+### Round 30: kid keys go live, Rayvn rename, Home-tab Inbox flag (2026-11-06)
+
+Set up the three kid keys for real (Angel, Max, and Gabriella, who wants
+"Rayvn" used for this specifically, not her everyday name): generated three
+random keys, walked Stephanie through adding them as Apps Script Script
+Properties (`KID_ANGEL`/`KID_MAX`/`KID_RAYVN`), and had her paste them into
+Settings' Kid links section, which needed `brie` renamed to `rayvn` in two
+spots in main.js (hardcoded in the kid-links loop) since the server already
+derives the kid's name generically from the property name and needed no
+change at all. Also confirmed a leftover `KID_TEST` script property was
+unused anywhere in the code (the lookup matches any `KID_*` property
+generically) and safe to delete.
+
+Built the first piece of the kids'-intake backlog item from Round 29: a
+Home-tab flag for unseen Inbox arrivals. `getLocal().lastInboxSeenAt`
+(device-local, never synced on purpose: checking the Inbox on her phone
+shouldn't silently clear the flag on her laptop) compared against each
+inbox task's `createdAt`. A banner button at the top of Home ("📥 N new in
+Inbox") appears whenever the count is nonzero, jumps to the Inbox tab on
+click, and `renderInbox()` stamps `lastInboxSeenAt` to now the moment that
+tab actually renders, by any route (the flag, or the nav bar directly).
+Verified live: flag shows the right count, clicking it navigates and
+clears it, the clear survives a full page reload (confirms it actually
+persisted, not just in-memory), and a newer submission after that correctly
+re-triggers the flag for just the new one.
+
+**Found while testing with a real kid link:** `kid/kid.js` still has
+`WEBAPP_URL = 'PASTE_WEBAPP_URL_HERE'`, a placeholder from when the kid
+page was first scaffolded that nothing ever filled in, not a regression
+from anything today. `docs/setup.md` never mentioned this step at all, so
+this isn't something Stephanie skipped, it was never documented as a step
+to begin with. Fixing it needs her actual deployed web app URL (not secret
+by itself, safe to hardcode here per the comment already in that file,
+unlike the owner/kid keys), which lives only on her device's Settings
+screen; waiting on that before patching `kid/kid.js` and adding the step to
+`docs/setup.md` so this can't happen again for a future kid key.
 
 ## Build order
 0. **Test first:** throwaway Apps Script + Pages page. Stephanie tests from
